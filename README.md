@@ -121,6 +121,10 @@ Release-readiness checks are available with:
 python scripts/release_readiness.py --json
 ```
 
+The complete v0.1.0 verification order and the distinction between
+hosted CI and live Termux verification are defined in
+`docs/RELEASE_PROCESS.md`.
+
 ## Verification
 
 The repository includes unit, integration, safety, adapter, CLI,
@@ -131,6 +135,7 @@ installs, and verifies release artifacts.
 
 See `docs/OPERATIONS-RUNBOOK.md` for the production/operator workflow.
 See `docs/RELEASE_READINESS_v0.1.0.md` for the release evidence record.
+See `docs/RELEASE_PROCESS.md` for the canonical release procedure.
 
 ## Status
 
