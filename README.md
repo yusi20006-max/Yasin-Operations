@@ -67,6 +67,25 @@ The gateway is intentionally local and optional. Existing CLI commands,
 runtime services, and the repository's standalone operation remain
 unchanged when it is not used.
 
+## Production acceptance
+
+The canonical read-only acceptance harness is:
+
+```sh
+python scripts/production_acceptance.py
+```
+
+Use `--json` for machine-readable results. Use `--live` on a Termux host
+to include read-only runit service inspection:
+
+```sh
+python scripts/production_acceptance.py --live --json
+```
+
+The normal CI workflow runs the non-live acceptance harness on Python
+3.11 through 3.14. Live service health is an operator/host verification
+step and is not claimed by the hosted CI environment.
+
 ## Termux / runit
 
 The optional always-on service definition is under
@@ -78,16 +97,36 @@ Runtime configuration is environment-backed, including the runit
 service root, `sv` path, registered service names, execution timeout,
 and health interval.
 
+Runit status is interpreted from its authoritative status prefix rather
+than its process-independent exit code:
+
+- `run:` → actual `running` / healthy
+- `down:` → actual `stopped`
+- `fail:` or `timeout:` → actual `failed`
+- unknown status text → actual `unknown`
+
+`desired_state` is separate from actual runtime state. In particular,
+`down: ... normally up` means the service is currently stopped even if
+runit is configured to keep it supervised.
+
 ## Verification
 
 The repository includes unit, integration, safety, adapter, CLI,
-gateway, resource, and failure-isolation tests. GitHub Actions runs the
-full suite on Python 3.11 through 3.14.
+gateway, resource, acceptance, and failure-isolation tests. GitHub
+Actions runs the full suite and the canonical non-live acceptance
+harness on Python 3.11 through 3.14, followed by clean-wheel packaging
+verification.
 
 See `docs/OPERATIONS-RUNBOOK.md` for the production/operator workflow.
 
 ## Status
 
-Issues #1 through #7 are implemented on `main` after their respective
-pull requests. The repository is now at the production-integration
-stage; no target Yasin repository is required for standalone operation.
+The original architecture issues (#1–#7) are implemented. Subsequent
+production-readiness work has hardened configuration, CLI contracts,
+packaging, diagnostics, service lifecycle handling, resource
+portability, authoritative runit state normalization, the production
+acceptance harness, and CI acceptance gating.
+
+The repository is in the production-integration stage. Yasin-Operations
+remains an optional standalone operations authority and does not require
+any target Yasin repository for core operation.
