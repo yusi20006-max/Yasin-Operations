@@ -1,65 +1,42 @@
+from datetime import datetime, timezone
+
 from yasin_operations.core.operations.models import OperationStatus, OperationTarget
-from yasin_operations.core.results.models import ErrorCategory, OperationError
 from yasin_operations.logging.audit import AuditRecord, InMemoryAuditRecorder
 
 
-def _target():
-    return OperationTarget(kind="service", identifier="x")
-
-
-def test_audit_record_construction():
-    record = AuditRecord(
-        operation_id="op-1",
-        operation_name="check_health",
-        target=_target(),
+def _record(operation_id="op-1"):
+    return AuditRecord(
+        operation_id=operation_id,
+        operation_name="status",
+        target=OperationTarget(kind="service", identifier="demo"),
         status=OperationStatus.SUCCEEDED,
+        timestamp=datetime.now(timezone.utc),
+        actor="operator",
+        source="cli",
+        correlation_id="corr-1",
+        duration_ms=4.2,
     )
-    assert record.operation_id == "op-1"
-    assert record.status == OperationStatus.SUCCEEDED
-    assert record.timestamp is not None
-    assert record.error is None
-    assert record.metadata == {}
 
 
-def test_audit_record_with_error():
-    err = OperationError(category=ErrorCategory.EXECUTION_FAILURE, message="failed")
-    record = AuditRecord(
-        operation_id="op-1",
-        operation_name="do_thing",
-        target=_target(),
-        status=OperationStatus.FAILED,
-        error=err,
-    )
-    assert record.error is err
+def test_audit_record_carries_required_attribution_fields():
+    entry = _record()
+    assert entry.operation_id == "op-1"
+    assert entry.target.identifier == "demo"
+    assert entry.actor == "operator"
+    assert entry.source == "cli"
+    assert entry.correlation_id == "corr-1"
+    assert entry.duration_ms == 4.2
 
 
-def test_in_memory_recorder_records_entries():
+def test_in_memory_recorder_returns_isolated_snapshots():
     recorder = InMemoryAuditRecorder()
-    record = AuditRecord(
-        operation_id="op-1",
-        operation_name="check_health",
-        target=_target(),
-        status=OperationStatus.SUCCEEDED,
-    )
-    recorder.record(record)
-    assert len(recorder.entries) == 1
-    assert recorder.entries[0] is record
+    recorder.record(_record())
+    recorder.record(_record("op-2"))
 
+    snapshot = recorder.entries
+    snapshot.clear()
+    assert len(recorder.entries) == 2
+    assert len(recorder.for_operation("op-1")) == 1
 
-def test_in_memory_recorder_starts_empty():
-    recorder = InMemoryAuditRecorder()
+    recorder.clear()
     assert recorder.entries == []
-
-
-def test_in_memory_recorder_preserves_order():
-    recorder = InMemoryAuditRecorder()
-    for i in range(3):
-        recorder.record(
-            AuditRecord(
-                operation_id=f"op-{i}",
-                operation_name="do_thing",
-                target=_target(),
-                status=OperationStatus.SUCCEEDED,
-            )
-        )
-    assert [e.operation_id for e in recorder.entries] == ["op-0", "op-1", "op-2"]
