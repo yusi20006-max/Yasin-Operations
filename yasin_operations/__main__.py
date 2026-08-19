@@ -1,7 +1,9 @@
 """Module entrypoint for ``python -m yasin_operations``."""
 from __future__ import annotations
 
-from yasin_operations.cli import main
+import sys
+
+from yasin_operations.entrypoint import main
 
 
 if __name__ == "__main__":
