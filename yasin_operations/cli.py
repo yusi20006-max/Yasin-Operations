@@ -32,6 +32,7 @@ HEALTH_EXIT_UNHEALTHY = 2
 DOCTOR_EXIT_OK = 0
 DOCTOR_EXIT_DEGRADED = 1
 CONFIG_EXIT_ERROR = 2
+OPERATION_EXIT_ERROR = 2
 SCHEMA_VERSION = 1
 
 
@@ -69,29 +70,57 @@ def build_runtime(
     )
 
 
+def _add_global_options(parser: argparse.ArgumentParser, *, suppress_defaults: bool = False) -> None:
+    default = argparse.SUPPRESS if suppress_defaults else None
+    parser.add_argument("--json", action="store_true", dest="as_json", default=default, help="emit machine-readable JSON")
+    parser.add_argument("--service-root", default=default, help="override the configured runit service root")
+    parser.add_argument("--sv-path", default=default, help="override the configured sv executable path")
+    parser.add_argument("--services", default=default, help="override the service registry (comma-separated names)")
+    parser.add_argument("--timeout", type=float, default=default, help="override operation execution timeout in seconds")
+    parser.add_argument("--startup-grace", type=float, default=default, help="override startup grace period in seconds")
+    parser.add_argument(
+        "--log-level",
+        choices=sorted(OperationsConfig._VALID_LOG_LEVELS),
+        default=default,
+        help="override log level",
+    )
+    always_on = parser.add_mutually_exclusive_group()
+    always_on.add_argument(
+        "--always-on",
+        dest="always_on",
+        action="store_true",
+        default=default,
+        help="enable always-on behavior",
+    )
+    always_on.add_argument(
+        "--no-always-on",
+        dest="always_on",
+        action="store_false",
+        default=default,
+        help="disable always-on behavior",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="yasin-operations",
         description="Yasin-Operations control CLI",
     )
-    parser.add_argument("--json", action="store_true", dest="as_json", help="emit machine-readable JSON")
-    parser.add_argument("--service-root", help="override the configured runit service root")
-    parser.add_argument("--sv-path", help="override the configured sv executable path")
-    parser.add_argument("--services", help="override the service registry (comma-separated names)")
-    parser.add_argument("--timeout", type=float, help="override operation execution timeout in seconds")
-    parser.add_argument("--startup-grace", type=float, help="override startup grace period in seconds")
-    parser.add_argument("--log-level", choices=sorted(OperationsConfig._VALID_LOG_LEVELS), help="override log level")
-    always_on = parser.add_mutually_exclusive_group()
-    always_on.add_argument("--always-on", dest="always_on", action="store_true", help="enable always-on behavior")
-    always_on.add_argument("--no-always-on", dest="always_on", action="store_false", help="disable always-on behavior")
+    _add_global_options(parser)
     parser.set_defaults(always_on=None)
 
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("status", help="show configured service status")
-    sub.add_parser("health", help="show Operations health and resource state")
-    sub.add_parser("doctor", help="run non-invasive Termux/runit diagnostics")
+
+    status = sub.add_parser("status", help="show configured service status")
+    _add_global_options(status, suppress_defaults=True)
+    health = sub.add_parser("health", help="show Operations health and resource state")
+    _add_global_options(health, suppress_defaults=True)
+    doctor = sub.add_parser("doctor", help="run non-invasive Termux/runit diagnostics")
+    _add_global_options(doctor, suppress_defaults=True)
+
     for name in sorted(MUTATING_COMMANDS):
         command = sub.add_parser(name, help=f"{name} a configured service")
+        _add_global_options(command, suppress_defaults=True)
         command.add_argument("service")
         command.add_argument("--confirm", action="store_true", help="confirm the mutating action")
         command.add_argument("--dry-run", action="store_true", help="show the plan without changing state")
@@ -101,17 +130,18 @@ def build_parser() -> argparse.ArgumentParser:
 def _configuration_overrides(args: argparse.Namespace) -> dict[str, object]:
     overrides: dict[str, object] = {}
     mapping = {
-        "service_root": args.service_root,
-        "sv_path": args.sv_path,
-        "execution_timeout_seconds": args.timeout,
-        "startup_grace_seconds": args.startup_grace,
-        "always_on": args.always_on,
-        "log_level": args.log_level,
+        "service_root": getattr(args, "service_root", None),
+        "sv_path": getattr(args, "sv_path", None),
+        "execution_timeout_seconds": getattr(args, "timeout", None),
+        "startup_grace_seconds": getattr(args, "startup_grace", None),
+        "always_on": getattr(args, "always_on", None),
+        "log_level": getattr(args, "log_level", None),
     }
     overrides.update({key: value for key, value in mapping.items() if value is not None})
-    if args.services is not None:
+    services = getattr(args, "services", None)
+    if services is not None:
         overrides["service_names"] = tuple(
-            sorted({name.strip() for name in args.services.split(",") if name.strip()})
+            sorted({name.strip() for name in services.split(",") if name.strip()})
         )
     return overrides
 
@@ -164,9 +194,10 @@ def _health_exit_code(health: dict[str, Any], service_summary: dict[str, Any]) -
     return HEALTH_EXIT_OK
 
 
-def _configuration_error(exc: InvalidConfigurationError, as_json: bool) -> int:
+def _configuration_error(command: str, exc: InvalidConfigurationError, as_json: bool) -> int:
     payload = {
         "schema_version": SCHEMA_VERSION,
+        "command": command,
         "success": False,
         "error": {"category": "configuration", "message": str(exc)},
     }
@@ -177,19 +208,24 @@ def _configuration_error(exc: InvalidConfigurationError, as_json: bool) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    command = str(args.command)
+    as_json = bool(getattr(args, "as_json", False))
     try:
         executor, config, audit = build_runtime(_configuration_overrides(args))
     except InvalidConfigurationError as exc:
-        return _configuration_error(exc, args.as_json)
+        return _configuration_error(command, exc, as_json)
 
-    if args.command == "doctor":
+    if command == "doctor":
         diagnostics = detect_termux(
             config.service_root,
             sv_path=config.sv_path,
             expected_services=config.service_names,
         )
+        success = not diagnostics.issues
         result = {
             "schema_version": SCHEMA_VERSION,
+            "command": command,
+            "success": success,
             "termux": diagnostics.as_dict(),
             "resources": resource_snapshot().as_dict(),
             "configuration": {
@@ -202,11 +238,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "log_level": config.log_level,
                 "missing_services": list(config.missing_services()),
             },
+            "error": None if success else {"category": "diagnostics", "message": "one or more diagnostics reported issues"},
         }
-        _emit(result, args.as_json)
-        return DOCTOR_EXIT_OK if not diagnostics.issues else DOCTOR_EXIT_DEGRADED
+        _emit(result, as_json)
+        return DOCTOR_EXIT_OK if success else DOCTOR_EXIT_DEGRADED
 
-    if args.command == "status":
+    if command == "status":
         result = executor.execute(
             Operation(
                 name="list_services",
@@ -221,16 +258,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         summary = _service_summary(services)
         payload = {
             "schema_version": SCHEMA_VERSION,
+            "command": command,
             "success": result.success,
             "data": {"services": services, "summary": summary},
             "error": _error(result),
         }
-        _emit(payload, args.as_json)
+        _emit(payload, as_json)
         if not result.success:
             return STATUS_EXIT_ERROR
         return int(summary["exit_code"])
 
-    if args.command == "health":
+    if command == "health":
         health_result = executor.execute(
             Operation(
                 name="health_check",
@@ -253,38 +291,42 @@ def main(argv: Sequence[str] | None = None) -> int:
         service_data = dict(service_result.data or {})
         services = list(service_data.get("services", []))
         service_summary = _service_summary(services)
+        success = health_result.success and service_result.success
         payload = {
             "schema_version": SCHEMA_VERSION,
-            "success": health_result.success and service_result.success,
+            "command": command,
+            "success": success,
             "health": health,
             "services": {"items": services, "summary": service_summary},
             "resources": resource_snapshot().as_dict(),
             "error": _error(health_result) or _error(service_result),
         }
-        _emit(payload, args.as_json)
-        if not payload["success"]:
+        _emit(payload, as_json)
+        if not success:
             return HEALTH_EXIT_UNHEALTHY
         return _health_exit_code(health, service_summary)
 
-    operation = _operation_for_command(args.command, args.service)
+    operation = _operation_for_command(command, args.service)
     result = executor.execute(
         operation,
         actor="cli",
-        source=f"cli.{args.command}",
+        source=f"cli.{command}",
         confirmation=bool(args.confirm),
         dry_run=bool(args.dry_run),
     )
     _emit(
         {
+            "schema_version": SCHEMA_VERSION,
+            "command": command,
             "success": result.success,
             "operation_id": result.operation_id,
             "data": dict(result.data or {}),
             "error": _error(result),
             "audit_entries": len(audit.entries),
         },
-        args.as_json,
+        as_json,
     )
-    return 0 if result.success else 2
+    return STATUS_EXIT_OK if result.success else OPERATION_EXIT_ERROR
 
 
 def _error(result: Any) -> dict[str, Any] | None:
