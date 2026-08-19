@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 from yasin_operations.version import __version__
@@ -18,6 +20,7 @@ FORBIDDEN_NAMES = {
     "id_ed25519",
 }
 FORBIDDEN_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
+FORBIDDEN_PARTS = {"__pycache__", ".pytest_cache", ".venv", "venv", "dist", "build"}
 EXTERNAL_YASIN_PACKAGES = (
     "yasin_ai",
     "yasinai",
@@ -37,17 +40,59 @@ def check_version() -> tuple[bool, str]:
     return bool(__version__.strip()), __version__
 
 
+def check_project_metadata(root: Path) -> tuple[bool, list[str]]:
+    """Validate release-critical project metadata without invoking build tooling."""
+    path = root / "pyproject.toml"
+    if not path.is_file():
+        return False, ["pyproject.toml is missing"]
+
+    try:
+        document = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return False, [f"unable to parse pyproject.toml: {exc}"]
+
+    project = document.get("project", {})
+    scripts = project.get("scripts", {})
+    dynamic = project.get("dynamic", [])
+    problems: list[str] = []
+
+    if project.get("name") != "yasin-operations":
+        problems.append("project.name must be yasin-operations")
+    if project.get("requires-python") != ">=3.11":
+        problems.append("project.requires-python must remain >=3.11")
+    if "version" not in dynamic:
+        problems.append("project.version must remain dynamically sourced")
+    if scripts.get("yasin-operations") != "yasin_operations.entrypoint:main":
+        problems.append("yasin-operations console script is not authoritative")
+
+    version_file = root / "yasin_operations" / "version.py"
+    if not version_file.is_file():
+        problems.append("authoritative version.py is missing")
+
+    return not problems, problems
+
+
+def check_installed_metadata() -> tuple[bool, str]:
+    """Ensure installed distribution metadata agrees with the package version."""
+    try:
+        installed = importlib.metadata.version("yasin-operations")
+    except importlib.metadata.PackageNotFoundError:
+        return False, "installed distribution metadata not found"
+    return installed == __version__, installed
+
+
 def check_repository_hygiene(root: Path) -> tuple[bool, list[str]]:
     code, stdout, stderr = _run(["git", "-C", str(root), "ls-files"])
     if code != 0:
         return False, [f"git ls-files failed: {stderr.strip()}"]
+
     violations: list[str] = []
     for raw in stdout.splitlines():
         path = Path(raw)
         name = path.name.lower()
         if name in FORBIDDEN_NAMES or name.endswith(FORBIDDEN_SUFFIXES):
             violations.append(raw)
-        if any(part in {"__pycache__", ".pytest_cache", ".venv", "venv", "dist", "build"} for part in path.parts):
+        if any(part.lower() in FORBIDDEN_PARTS for part in path.parts):
             violations.append(raw)
     return not violations, sorted(set(violations))
 
@@ -64,7 +109,9 @@ def check_external_imports(root: Path) -> tuple[bool, list[str]]:
 
 
 def check_acceptance(root: Path) -> tuple[bool, str]:
-    code, stdout, stderr = _run([sys.executable, str(root / "scripts" / "production_acceptance.py"), "--json"])
+    code, stdout, stderr = _run(
+        [sys.executable, str(root / "scripts" / "production_acceptance.py"), "--json"]
+    )
     if code != 0:
         return False, stdout or stderr
     try:
@@ -81,12 +128,20 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
 
     version_ok, version = check_version()
+    metadata_ok, metadata = check_project_metadata(root)
+    installed_ok, installed_version = check_installed_metadata()
     hygiene_ok, hygiene = check_repository_hygiene(root)
     imports_ok, imports = check_external_imports(root)
     acceptance_ok, acceptance = check_acceptance(root)
 
     checks = [
         {"name": "version", "pass": version_ok, "detail": version},
+        {"name": "project_metadata", "pass": metadata_ok, "detail": metadata},
+        {
+            "name": "installed_metadata",
+            "pass": installed_ok,
+            "detail": installed_version,
+        },
         {"name": "repository_hygiene", "pass": hygiene_ok, "detail": hygiene},
         {"name": "external_yasin_imports", "pass": imports_ok, "detail": imports},
         {"name": "production_acceptance", "pass": acceptance_ok, "detail": acceptance},
