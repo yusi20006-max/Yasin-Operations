@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
 from yasin_operations.runtime.process import ProcessInspector
-from yasin_operations.runtime.service import ServiceBackend, ServiceInfo, ServiceNotFoundError, ServiceState
+from yasin_operations.runtime.service import ServiceBackend, ServiceCommandError, ServiceInfo, ServiceNotFoundError, ServiceState
 
 
 @dataclass(frozen=True)
@@ -70,15 +70,22 @@ class RunitServiceBackend(ServiceBackend):
         d = self._require(name)
         if not self.available:
             return self.get_status(name)
-        self._sv(d, "restart")
+        self._run_command(d, "restart")
         return self.get_status(name)
 
     def _mutate(self, name: str, action: str) -> ServiceInfo:
         d = self._require(name)
         if not self.available:
             return self.get_status(name)
-        self._sv(d, action)
+        self._run_command(d, action)
         return self.get_status(name)
+
+    def _run_command(self, d: RunitServiceDefinition, action: str) -> subprocess.CompletedProcess[str]:
+        result = self._sv(d, action)
+        if result.returncode != 0:
+            output = (result.stderr or result.stdout or "").strip()[:500]
+            raise ServiceCommandError(d.name, action, result.returncode, output)
+        return result
 
     def _sv(self, d: RunitServiceDefinition, action: str) -> subprocess.CompletedProcess[str]:
         service_dir = d.service_dir or str(self._root / d.name)
