@@ -47,18 +47,22 @@ jobs:
           python -m venv .release-venv
           . .release-venv/bin/activate
           python -m pip install dist/*.whl
-          test "$(yasin-operations --version)" = "yasin-operations 0.1.0"
-          test "$(python -m yasin_operations --version)" = "yasin-operations 0.1.0"
+          cd /tmp
+          EXPECTED_VERSION="$(python -c 'from importlib.metadata import version; print(version("yasin-operations"))')"
+          test "$(yasin-operations --version)" = "yasin-operations ${EXPECTED_VERSION}"
+          test "$(python -m yasin_operations --version)" = "yasin-operations ${EXPECTED_VERSION}"
           yasin-operations --help
           python -m yasin_operations --help
-          python scripts/production_acceptance.py --json
-          python scripts/release_readiness.py --json
+          python "$GITHUB_WORKSPACE/scripts/production_acceptance.py" --json
+          python "$GITHUB_WORKSPACE/scripts/release_readiness.py" --json
           python -m pip check
       - name: Install source distribution into clean virtual environment
         run: |
           python -m venv .sdist-venv
           . .sdist-venv/bin/activate
           python -m pip install dist/*.tar.gz
-          test "$(yasin-operations --version)" = "yasin-operations 0.1.0"
-          test "$(python -m yasin_operations --version)" = "yasin-operations 0.1.0"
+          cd /tmp
+          EXPECTED_VERSION="$(python -c 'from importlib.metadata import version; print(version("yasin-operations"))')"
+          test "$(yasin-operations --version)" = "yasin-operations ${EXPECTED_VERSION}"
+          test "$(python -m yasin_operations --version)" = "yasin-operations ${EXPECTED_VERSION}"
           python -m pip check
