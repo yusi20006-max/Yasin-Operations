@@ -5,12 +5,15 @@ import argparse
 import json
 from typing import Any, Sequence
 
-from yasin_operations.config.config import OperationsConfig
+from yasin_operations.config.config import (
+    InvalidConfigurationError,
+    OperationsConfig,
+    load_config,
+)
 from yasin_operations.core.execution.executor import Executor
 from yasin_operations.core.operations.models import Operation, OperationTarget
 from yasin_operations.logging.audit import InMemoryAuditRecorder
 from yasin_operations.runtime.resources import snapshot as resource_snapshot
-from yasin_operations.runtime.termux.config import TermuxRuntimeConfig
 from yasin_operations.runtime.termux.diagnostics import detect_termux
 from yasin_operations.runtime.termux.runit import RunitServiceBackend
 from yasin_operations.runtime.tools import register_runtime_tools
@@ -28,12 +31,18 @@ HEALTH_EXIT_DEGRADED = 1
 HEALTH_EXIT_UNHEALTHY = 2
 DOCTOR_EXIT_OK = 0
 DOCTOR_EXIT_DEGRADED = 1
+CONFIG_EXIT_ERROR = 2
 SCHEMA_VERSION = 1
 
 
-def build_runtime() -> tuple[Executor, TermuxRuntimeConfig, InMemoryAuditRecorder]:
-    config = TermuxRuntimeConfig.from_env()
-    inspector = __import__("yasin_operations.runtime.local.process_backend", fromlist=["LocalProcessInspector"]).LocalProcessInspector()
+def build_runtime(
+    config_overrides: dict[str, object] | None = None,
+) -> tuple[Executor, OperationsConfig, InMemoryAuditRecorder]:
+    config = load_config(config_overrides)
+    inspector = __import__(
+        "yasin_operations.runtime.local.process_backend",
+        fromlist=["LocalProcessInspector"],
+    ).LocalProcessInspector()
     backend = RunitServiceBackend(
         inspector,
         service_root=config.service_root,
@@ -46,15 +55,37 @@ def build_runtime() -> tuple[Executor, TermuxRuntimeConfig, InMemoryAuditRecorde
         registry,
         inspector=inspector,
         service_backend=backend,
-        config=OperationsConfig(execution_timeout_seconds=int(config.execution_timeout_seconds)),
+        config=config,
     )
     audit = InMemoryAuditRecorder()
-    return Executor(registry, policy=SafetyPolicy(timeout_seconds=config.execution_timeout_seconds), audit_recorder=audit), config, audit
+    return (
+        Executor(
+            registry,
+            policy=SafetyPolicy(timeout_seconds=config.execution_timeout_seconds),
+            audit_recorder=audit,
+        ),
+        config,
+        audit,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="yasin-operations", description="Yasin-Operations control CLI")
+    parser = argparse.ArgumentParser(
+        prog="yasin-operations",
+        description="Yasin-Operations control CLI",
+    )
     parser.add_argument("--json", action="store_true", dest="as_json", help="emit machine-readable JSON")
+    parser.add_argument("--service-root", help="override the configured runit service root")
+    parser.add_argument("--sv-path", help="override the configured sv executable path")
+    parser.add_argument("--services", help="override the service registry (comma-separated names)")
+    parser.add_argument("--timeout", type=float, help="override operation execution timeout in seconds")
+    parser.add_argument("--startup-grace", type=float, help="override startup grace period in seconds")
+    parser.add_argument("--log-level", choices=sorted(OperationsConfig._VALID_LOG_LEVELS), help="override log level")
+    always_on = parser.add_mutually_exclusive_group()
+    always_on.add_argument("--always-on", dest="always_on", action="store_true", help="enable always-on behavior")
+    always_on.add_argument("--no-always-on", dest="always_on", action="store_false", help="disable always-on behavior")
+    parser.set_defaults(always_on=None)
+
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status", help="show configured service status")
     sub.add_parser("health", help="show Operations health and resource state")
@@ -65,6 +96,24 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--confirm", action="store_true", help="confirm the mutating action")
         command.add_argument("--dry-run", action="store_true", help="show the plan without changing state")
     return parser
+
+
+def _configuration_overrides(args: argparse.Namespace) -> dict[str, object]:
+    overrides: dict[str, object] = {}
+    mapping = {
+        "service_root": args.service_root,
+        "sv_path": args.sv_path,
+        "execution_timeout_seconds": args.timeout,
+        "startup_grace_seconds": args.startup_grace,
+        "always_on": args.always_on,
+        "log_level": args.log_level,
+    }
+    overrides.update({key: value for key, value in mapping.items() if value is not None})
+    if args.services is not None:
+        overrides["service_names"] = tuple(
+            sorted({name.strip() for name in args.services.split(",") if name.strip()})
+        )
+    return overrides
 
 
 def _operation_for_command(command: str, service: str) -> Operation:
@@ -115,10 +164,23 @@ def _health_exit_code(health: dict[str, Any], service_summary: dict[str, Any]) -
     return HEALTH_EXIT_OK
 
 
+def _configuration_error(exc: InvalidConfigurationError, as_json: bool) -> int:
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "success": False,
+        "error": {"category": "configuration", "message": str(exc)},
+    }
+    _emit(payload, as_json)
+    return CONFIG_EXIT_ERROR
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    executor, config, audit = build_runtime()
+    try:
+        executor, config, audit = build_runtime(_configuration_overrides(args))
+    except InvalidConfigurationError as exc:
+        return _configuration_error(exc, args.as_json)
 
     if args.command == "doctor":
         diagnostics = detect_termux(
@@ -135,6 +197,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "sv_path": config.sv_path,
                 "service_names": list(config.service_names),
                 "always_on": config.always_on,
+                "execution_timeout_seconds": config.execution_timeout_seconds,
+                "startup_grace_seconds": config.startup_grace_seconds,
+                "log_level": config.log_level,
+                "missing_services": list(config.missing_services()),
             },
         }
         _emit(result, args.as_json)
