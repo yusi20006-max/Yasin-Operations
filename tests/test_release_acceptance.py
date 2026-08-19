@@ -14,7 +14,7 @@ def test_distribution_exposes_console_entrypoint() -> None:
         for entry in distribution.entry_points
         if entry.group == "console_scripts"
     }
-    assert entrypoints["yasin-operations"] == "yasin_operations.cli:main"
+    assert entrypoints["yasin-operations"] == "yasin_operations.entrypoint:main"
 
 
 def test_installed_cli_help() -> None:
