@@ -30,6 +30,17 @@ def test_installed_cli_help() -> None:
     assert "Yasin-Operations control CLI" in result.stdout
 
 
+def test_installed_and_module_versions_match() -> None:
+    executable = shutil.which("yasin-operations")
+    assert executable is not None
+    installed = subprocess.run([executable, "--version"], capture_output=True, text=True, check=False)
+    module = subprocess.run([sys.executable, "-m", "yasin_operations", "--version"], capture_output=True, text=True, check=False)
+    assert installed.returncode == 0
+    assert module.returncode == 0
+    assert installed.stdout.strip() == module.stdout.strip()
+    assert installed.stdout.startswith("yasin-operations ")
+
+
 def test_module_entrypoint_help() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "yasin_operations", "--help"],

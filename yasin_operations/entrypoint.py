@@ -3,8 +3,13 @@ from __future__ import annotations
 
 import sys
 
+from yasin_operations.version import __version__
+
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "--version":
+        print(f"yasin-operations {__version__}")
+        return 0
     if len(sys.argv) > 1 and sys.argv[1] == "gateway":
         from yasin_operations.gateway_cli import main as gateway_main
 

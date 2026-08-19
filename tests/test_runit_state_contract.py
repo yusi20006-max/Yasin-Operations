@@ -31,6 +31,7 @@ def _backend(tmp_path, monkeypatch, output: str, returncode: int = 0):
 
     completed = subprocess.CompletedProcess([str(sv), "status", str(service_dir)], returncode, output, "")
     monkeypatch.setattr("yasin_operations.runtime.termux.runit.subprocess.run", lambda *args, **kwargs: completed)
+    monkeypatch.setattr("yasin_operations.runtime.termux.runit.os.access", lambda path, mode: True)
     inspector = FakeInspector({"yasinpress": [1234]})
     backend = RunitServiceBackend(
         inspector,

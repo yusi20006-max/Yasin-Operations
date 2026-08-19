@@ -23,6 +23,7 @@ yasin_operations/
     gateway.py        Optional local JSONL Operations Gateway
     gateway_cli.py    Gateway command implementation
     entrypoint.py     Installed CLI router
+    version.py        Authoritative package version
     cli.py            Standalone operations CLI
     daemon.py         Optional supervised always-on daemon
 ```
@@ -38,14 +39,17 @@ Adapters cannot bypass that boundary.
 ## CLI
 
 ```sh
-python -m yasin_operations.cli doctor
-python -m yasin_operations.cli status
-python -m yasin_operations.cli health
-python -m yasin_operations.cli restart <service> --dry-run
-python -m yasin_operations.cli restart <service> --confirm
+python -m yasin_operations doctor
+python -m yasin_operations status
+python -m yasin_operations health
+python -m yasin_operations restart <service> --dry-run
+python -m yasin_operations restart <service> --confirm
+yasin-operations --version
 ```
 
-Use `--json` for machine-readable output.
+Use `--json` for machine-readable output. The installed console entrypoint
+and `python -m yasin_operations` share the same authoritative package
+version.
 
 ### Local Operations Gateway
 
@@ -78,16 +82,40 @@ Runtime configuration is environment-backed, including the runit
 service root, `sv` path, registered service names, execution timeout,
 and health interval.
 
+## Production acceptance and release readiness
+
+The canonical read-only acceptance harness is:
+
+```sh
+python scripts/production_acceptance.py
+python scripts/production_acceptance.py --live
+```
+
+The first command is safe for normal CI and skips live runit inspection.
+The `--live` form adds read-only `sv status` checks. No lifecycle mutation
+is performed by either form.
+
+Release-readiness checks are available with:
+
+```sh
+python scripts/release_readiness.py --json
+```
+
+This verifies the authoritative version, repository hygiene, independence
+from external Yasin package imports, and the safe acceptance surface.
+
 ## Verification
 
 The repository includes unit, integration, safety, adapter, CLI,
-gateway, resource, and failure-isolation tests. GitHub Actions runs the
-full suite on Python 3.11 through 3.14.
+gateway, resource, release-readiness, and failure-isolation tests. GitHub
+Actions runs the full suite on Python 3.11 through 3.14 and separately
+builds/tests both wheel and source-distribution artifacts.
 
 See `docs/OPERATIONS-RUNBOOK.md` for the production/operator workflow.
 
 ## Status
 
 Issues #1 through #7 are implemented on `main` after their respective
-pull requests. The repository is now at the production-integration
-stage; no target Yasin repository is required for standalone operation.
+pull requests. The repository is now at the production-integration and
+release-hardening stage; no target Yasin repository is required for
+standalone operation.
