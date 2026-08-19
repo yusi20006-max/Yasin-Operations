@@ -2,7 +2,7 @@
 
 The executor remains platform-agnostic: concrete tools own execution,
 while SafetyPolicy owns authorization and AuditRecorder owns the audit
-sink.  No shell or arbitrary command execution is introduced here.
+sink. No shell or arbitrary command execution is introduced here.
 """
 from __future__ import annotations
 
@@ -10,18 +10,14 @@ import time
 import uuid
 
 from yasin_operations.core.operations.models import Operation, OperationStatus
-from yasin_operations.core.results.models import (
-    ErrorCategory,
-    OperationError,
-    OperationResult,
-)
+from yasin_operations.core.results.models import ErrorCategory, OperationError, OperationResult
 from yasin_operations.logging.audit import AuditRecord, AuditRecorder
 from yasin_operations.safety.policy import SafetyPolicy
 from yasin_operations.tools.registry.registry import ToolRegistry
 
 
 class Executor:
-    """Execute registered tools only after policy authorization."""
+    """Validate, authorize, execute, and audit registered tools."""
 
     def __init__(
         self,
@@ -49,21 +45,54 @@ class Executor:
         correlation_id = correlation_id or str(uuid.uuid4())
         started = time.monotonic()
 
+        matches = self.registry.find_for_operation(operation.name)
+        if not matches:
+            result = OperationResult.fail(
+                operation.id,
+                OperationError(
+                    category=ErrorCategory.UNSUPPORTED_OPERATION,
+                    message=f"No registered tool supports operation: {operation.name!r}",
+                ),
+            )
+            self._audit(
+                operation, OperationStatus.FAILED, result,
+                actor=actor, source=source, correlation_id=correlation_id, started=started,
+            )
+            return result
+
+        tool = matches[0]
+        capability = tool.descriptor.capability_for(operation.name)
+        if capability is None or capability.safety_class != operation.safety_class:
+            tool_class = capability.safety_class.value if capability is not None else "unknown"
+            result = OperationResult.fail(
+                operation.id,
+                OperationError(
+                    category=ErrorCategory.VALIDATION_ERROR,
+                    message=(
+                        "Operation safety_class does not match the tool's declared "
+                        f"safety_class for {operation.name!r}: "
+                        f"operation={operation.safety_class.value!r}, tool={tool_class!r}"
+                    ),
+                ),
+            )
+            self._audit(
+                operation, OperationStatus.FAILED, result,
+                actor=actor, source=source, correlation_id=correlation_id, started=started,
+            )
+            return result
+
         decision = self.policy.evaluate(
             operation, confirmation=confirmation, dry_run=dry_run
         )
         if dry_run:
-            result = OperationResult.ok(operation.id, self.policy.plan(operation))
+            plan = dict(self.policy.plan(operation))
+            plan["tool_id"] = tool.descriptor.id
+            result = OperationResult.ok(operation.id, plan)
             self._audit(
-                operation,
-                OperationStatus.SUCCEEDED,
-                result,
-                actor=actor,
-                source=source,
-                correlation_id=correlation_id,
-                started=started,
-                dry_run=True,
-                metadata={"policy_reason": decision.reason},
+                operation, OperationStatus.SUCCEEDED, result,
+                actor=actor, source=source, correlation_id=correlation_id,
+                started=started, dry_run=True,
+                metadata={"policy_reason": decision.reason, "tool_id": tool.descriptor.id},
             )
             return result
 
@@ -77,60 +106,9 @@ class Executor:
                 ),
             )
             self._audit(
-                operation,
-                OperationStatus.DENIED,
-                result,
-                actor=actor,
-                source=source,
-                correlation_id=correlation_id,
-                started=started,
-                metadata={"policy_reason": decision.reason},
-            )
-            return result
-
-        matches = self.registry.find_for_operation(operation.name)
-        if not matches:
-            result = OperationResult.fail(
-                operation.id,
-                OperationError(
-                    category=ErrorCategory.UNSUPPORTED_OPERATION,
-                    message=f"No registered tool supports operation: {operation.name!r}",
-                ),
-            )
-            self._audit(
-                operation,
-                OperationStatus.FAILED,
-                result,
-                actor=actor,
-                source=source,
-                correlation_id=correlation_id,
-                started=started,
-            )
-            return result
-
-        tool = matches[0]
-        capability = tool.descriptor.capability_for(operation.name)
-        if capability is not None and capability.safety_class != operation.safety_class:
-            result = OperationResult.fail(
-                operation.id,
-                OperationError(
-                    category=ErrorCategory.VALIDATION_ERROR,
-                    message=(
-                        "Operation safety_class does not match the tool's "
-                        f"declared safety_class for {operation.name!r}: "
-                        f"operation={operation.safety_class.value!r}, "
-                        f"tool={capability.safety_class.value!r}"
-                    ),
-                ),
-            )
-            self._audit(
-                operation,
-                OperationStatus.FAILED,
-                result,
-                actor=actor,
-                source=source,
-                correlation_id=correlation_id,
-                started=started,
+                operation, OperationStatus.DENIED, result,
+                actor=actor, source=source, correlation_id=correlation_id,
+                started=started, metadata={"policy_reason": decision.reason},
             )
             return result
 
@@ -161,7 +139,7 @@ class Executor:
                         details={"attempt": attempt},
                     ),
                 )
-            except Exception as exc:  # noqa: BLE001 - convert tool failures to structured results
+            except Exception as exc:  # noqa: BLE001
                 last_result = OperationResult.fail(
                     operation.id,
                     OperationError(
@@ -173,12 +151,8 @@ class Executor:
 
             if attempt == attempts:
                 self._audit(
-                    operation,
-                    OperationStatus.FAILED,
-                    last_result,
-                    actor=actor,
-                    source=source,
-                    correlation_id=correlation_id,
+                    operation, OperationStatus.FAILED, last_result,
+                    actor=actor, source=source, correlation_id=correlation_id,
                     started=started,
                     metadata={"attempt": attempt, "max_attempts": attempts},
                 )
@@ -217,7 +191,5 @@ class Executor:
         try:
             self.audit_recorder.record(entry)
         except Exception:
-            # Audit sinks must not turn a completed operation into an
-            # unstructured execution failure. Production sinks can
-            # provide their own durable delivery guarantees.
+            # An audit sink must not corrupt the operation result.
             return
