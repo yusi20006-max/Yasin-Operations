@@ -33,6 +33,18 @@ class ServiceNotFoundError(Exception):
         super().__init__(f"Service not found: {name!r}")
 
 
+class ServiceCommandError(Exception):
+    """Raised when a predefined service lifecycle command fails."""
+
+    def __init__(self, name: str, action: str, returncode: int, message: str = ""):
+        self.name = name
+        self.action = action
+        self.returncode = returncode
+        self.message = message.strip()
+        detail = self.message or f"exit code {returncode}"
+        super().__init__(f"Service {action} failed for {name!r}: {detail}")
+
+
 @dataclass(frozen=True)
 class ServiceInfo:
     """Structured description of a service."""
