@@ -63,7 +63,7 @@ def test_missing_runtime_components_are_actionable(tmp_path: Path) -> None:
     assert not result.sv_exists
     assert "service_root_missing" in result.issues
     assert "runit_sv_missing" in result.issues
-    assert result.missing_services == ()
+    assert result.missing_services == ("demo", "yasin-ai")
 
 
 def test_missing_configured_service_is_reported(tmp_path: Path) -> None:
