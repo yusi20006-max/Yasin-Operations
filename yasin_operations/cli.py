@@ -10,7 +10,6 @@ from yasin_operations.core.execution.executor import Executor
 from yasin_operations.core.operations.models import Operation, OperationTarget
 from yasin_operations.logging.audit import InMemoryAuditRecorder
 from yasin_operations.runtime.resources import snapshot as resource_snapshot
-from yasin_operations.runtime.service import ServiceState
 from yasin_operations.runtime.termux.config import TermuxRuntimeConfig
 from yasin_operations.runtime.termux.diagnostics import detect_termux
 from yasin_operations.runtime.termux.runit import RunitServiceBackend
@@ -27,6 +26,8 @@ STATUS_EXIT_ERROR = 2
 HEALTH_EXIT_OK = 0
 HEALTH_EXIT_DEGRADED = 1
 HEALTH_EXIT_UNHEALTHY = 2
+DOCTOR_EXIT_OK = 0
+DOCTOR_EXIT_DEGRADED = 1
 SCHEMA_VERSION = 1
 
 
@@ -57,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status", help="show configured service status")
     sub.add_parser("health", help="show Operations health and resource state")
-    sub.add_parser("doctor", help="run Termux/runit startup diagnostics")
+    sub.add_parser("doctor", help="run non-invasive Termux/runit diagnostics")
     for name in sorted(MUTATING_COMMANDS):
         command = sub.add_parser(name, help=f"{name} a configured service")
         command.add_argument("service")
@@ -120,7 +121,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     executor, config, audit = build_runtime()
 
     if args.command == "doctor":
-        diagnostics = detect_termux(config.service_root)
+        diagnostics = detect_termux(
+            config.service_root,
+            sv_path=config.sv_path,
+            expected_services=config.service_names,
+        )
         result = {
             "schema_version": SCHEMA_VERSION,
             "termux": diagnostics.as_dict(),
@@ -133,7 +138,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             },
         }
         _emit(result, args.as_json)
-        return 0 if not diagnostics.issues else 1
+        return DOCTOR_EXIT_OK if not diagnostics.issues else DOCTOR_EXIT_DEGRADED
 
     if args.command == "status":
         result = executor.execute(
