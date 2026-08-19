@@ -26,8 +26,18 @@ class FakeInspector:
         return any(p.pid == pid for p in self.matches)
 
 
+def _backend(tmp_path: Path, inspector=None):
+    service_root = tmp_path / "service"
+    service_root.mkdir()
+    (service_root / "demo").mkdir()
+    sv = tmp_path / "sv"
+    sv.write_text("#!/bin/sh\n", encoding="utf-8")
+    sv.chmod(0o755)
+    return RunitServiceBackend(inspector or FakeInspector(), str(service_root), [RunitServiceDefinition("demo", process_pattern="demo")], sv_path=str(sv))
+
+
 def test_missing_runit_is_graceful(tmp_path: Path):
-    backend = RunitServiceBackend(FakeInspector(), str(tmp_path), [RunitServiceDefinition("demo")])
+    backend = RunitServiceBackend(FakeInspector(), str(tmp_path), [RunitServiceDefinition("demo")], sv_path=str(tmp_path / "missing-sv"))
     info = backend.get_status("demo")
     assert info.state == ServiceState.UNKNOWN
     assert info.health_state == "unavailable"
@@ -43,10 +53,8 @@ def test_unknown_service_is_structured():
 
 
 def test_status_uses_process_observation(tmp_path: Path, monkeypatch):
-    (tmp_path / "demo").mkdir()
     fake = FakeInspector([ProcessInfo(pid=123, name="demo", status="running", cmdline="demo --loop")])
-    backend = RunitServiceBackend(fake, str(tmp_path), [RunitServiceDefinition("demo", process_pattern="demo")])
-    monkeypatch.setattr(backend, "available", True)
+    backend = _backend(tmp_path, fake)
     monkeypatch.setattr(backend, "_sv", lambda d, action: type("R", (), {"returncode": 0, "stdout": "run: demo: (pid 123) 5s", "stderr": ""})())
     info = backend.get_status("demo")
     assert info.state == ServiceState.RUNNING
@@ -55,10 +63,8 @@ def test_status_uses_process_observation(tmp_path: Path, monkeypatch):
 
 
 def test_mutations_use_fixed_argv(monkeypatch, tmp_path: Path):
-    (tmp_path / "demo").mkdir()
-    backend = RunitServiceBackend(FakeInspector(), str(tmp_path), [RunitServiceDefinition("demo")])
+    backend = _backend(tmp_path)
     calls = []
-    monkeypatch.setattr(backend, "available", True)
     monkeypatch.setattr(backend, "_sv", lambda d, action: calls.append((d.name, action)) or type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})())
     monkeypatch.setattr(backend, "get_status", lambda name: type("I", (), {"name": name, "state": ServiceState.RUNNING})())
     backend.start("demo")
