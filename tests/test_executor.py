@@ -3,7 +3,9 @@ import pytest
 from yasin_operations.core.execution.executor import Executor
 from yasin_operations.core.operations.models import Operation, OperationTarget
 from yasin_operations.core.results.models import ErrorCategory, OperationError, OperationResult
+from yasin_operations.logging.audit import InMemoryAuditRecorder
 from yasin_operations.safety.classification import SafetyClass
+from yasin_operations.safety.policy import SafetyPolicy
 from yasin_operations.tools.contracts.tool import ToolCapability, ToolDescriptor
 from yasin_operations.tools.registry.registry import ToolRegistry
 
@@ -108,7 +110,7 @@ def test_execute_failing_operation_returns_structured_error():
 
 
 def test_execute_unsupported_operation():
-    registry = ToolRegistry()  # no tools registered
+    registry = ToolRegistry()
     executor = Executor(registry)
 
     op = Operation(name="nonexistent_op", target=_target(), safety_class=SafetyClass.READ_ONLY)
@@ -132,10 +134,6 @@ def test_execute_tool_that_raises_is_converted_to_internal_error():
 
 
 def test_execute_rejects_safety_class_mismatch():
-    """An operation claiming READ_ONLY against a tool that declares
-    MUTATING for the same operation name must be rejected rather than
-    silently executed -- this is the executor's defense against a
-    caller misrepresenting an operation's safety class."""
     registry = ToolRegistry()
     registry.register(MutatingCapabilityTool())
     executor = Executor(registry)
@@ -147,28 +145,47 @@ def test_execute_rejects_safety_class_mismatch():
     assert result.error.category == ErrorCategory.VALIDATION_ERROR
 
 
-def test_execute_matching_safety_class_succeeds():
+def test_execute_matching_mutation_requires_confirmation():
     registry = ToolRegistry()
     registry.register(MutatingCapabilityTool())
-    executor = Executor(registry)
+    audit = InMemoryAuditRecorder()
+    executor = Executor(registry, audit_recorder=audit)
 
     op = Operation(name="do_thing", target=_target(), safety_class=SafetyClass.MUTATING)
-    result = executor.execute(op)
+    denied = executor.execute(op)
+    assert denied.success is False
+    assert denied.error.category == ErrorCategory.PERMISSION_DENIED
 
-    assert result.success is True
+    allowed = executor.execute(op, actor="operator", source="test", confirmation=True)
+    assert allowed.success is True
+    assert audit.entries[-1].actor == "operator"
+    assert audit.entries[-1].source == "test"
 
 
-def test_execute_denied_operation_never_reaches_tool():
-    """Simulates a 'denied' path: caller does not even attempt
-    execution when authorization has already denied the operation.
-    The executor itself has no authorization concept (that is a
-    future layer) -- this test documents that denial is expected to
-    happen before Executor.execute() is called at all."""
+def test_execute_dry_run_never_reaches_tool():
+    class ExplodingTool(SucceedingTool):
+        def execute(self, operation: Operation) -> OperationResult:
+            raise AssertionError("dry-run executed the tool")
+
     registry = ToolRegistry()
-    registry.register(SucceedingTool())
+    registry.register(ExplodingTool())
     executor = Executor(registry)
+    op = Operation(name="do_thing", target=_target(), safety_class=SafetyClass.READ_ONLY)
 
-    # No tool call happens; a denial decision made upstream simply
-    # never calls executor.execute(). This is a structural test
-    # confirming Executor has no override/bypass for such a decision.
-    assert not hasattr(executor, "force_execute")
+    result = executor.execute(op, dry_run=True)
+    assert result.success is True
+    assert result.data["dry_run"] is True
+
+
+def test_protected_target_is_denied_even_with_confirmation():
+    registry = ToolRegistry()
+    registry.register(MutatingCapabilityTool())
+    policy = SafetyPolicy.with_protected_targets(
+        {("service", "x")}, protected_mutation_allowlist=set()
+    )
+    executor = Executor(registry, policy=policy)
+    op = Operation(name="do_thing", target=_target(), safety_class=SafetyClass.MUTATING)
+
+    result = executor.execute(op, confirmation=True)
+    assert result.success is False
+    assert result.error.category == ErrorCategory.PERMISSION_DENIED
