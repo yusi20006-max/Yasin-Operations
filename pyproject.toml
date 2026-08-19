@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=61.0.0"]
+requires = ["setuptools>=69.0.0", "wheel>=0.42.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "yasin-operations"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Yasin-Operations: modular Operations Agent foundation for the Yasin ecosystem"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
@@ -27,3 +27,10 @@ script-files = ["scripts/yasin-operations"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["yasin_operations*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "yasin_operations.version.__version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
