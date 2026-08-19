@@ -10,7 +10,29 @@ Yasin-Operations is optional. Existing Yasin services must not require it to sta
 2. Run `python -m yasin_operations.cli doctor` on the target host.
 3. Run `python -m yasin_operations.cli status` and confirm only intentionally registered services appear.
 4. Run `python -m yasin_operations.cli health`.
-5. Validate a mutation with `--dry-run` before using `--confirm`.
+5. Run the canonical read-only acceptance harness with `python scripts/production_acceptance.py`.
+6. On a Termux host, add `--live` to include read-only `sv status` checks for the configured services.
+7. Validate a mutation with `--dry-run` before using `--confirm`.
+
+## Acceptance harness
+
+The canonical acceptance command is:
+
+```sh
+python scripts/production_acceptance.py
+```
+
+The harness validates the current Hermes typed request contract, all three ecosystem adapter contracts with an injected fake probe, CLI JSON execution, portable repository-search checks, and deterministic PASS/FAIL/SKIP reporting.
+
+Live service inspection is opt-in and remains read-only:
+
+```sh
+python scripts/production_acceptance.py --live
+```
+
+A runit result beginning with `run:` is interpreted as actual `running`. A result beginning with `down:` is actual `stopped`, even when the text says `normally up`. `fail:` and `timeout:` are actual `failed`. Desired state is not substituted for actual state. Therefore a service configured as desired `running` but reported by runit as `down: ... normally up` is a genuine runtime failure for a live acceptance run, not a harness success.
+
+Use `--json` for machine-readable harness output.
 
 ## Safety rules
 
