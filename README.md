@@ -1,80 +1,70 @@
 # Yasin-Operations
 
-Modular Operations Agent foundation for the Yasin ecosystem.
+Modular Operations Agent for the Yasin ecosystem.
 
 ## Independence
 
-This repository is standalone. It does not require, import, or call
-out to Yasin-AI, YasinPress, YasinRelay, Hermes, any other Yasin
-repository, any external AI provider, or any running service outside
-this repository. A clean clone can install, import, and run its full
-test suite with none of those available.
-
-Future integrations (Hermes, Yasin-AI, YasinPress, YasinRelay) are
-implemented as optional adapters that depend on this Core -- the Core
-never depends on them.
+This repository is standalone. It does not require Hermes, Yasin-AI,
+YasinPress, YasinRelay, another Yasin repository, an external AI
+provider, or a running external service to import and operate its Core.
+All integrations are optional adapters around Core contracts.
 
 ## Package layout
 
 ```
 yasin_operations/
-    core/
-        operations/   Typed operation and lifecycle contracts
-        execution/    Policy-enforced executor and tool dispatch
-        results/      OperationResult, OperationError, ErrorCategory
-    runtime/
-        local/        Portable local process/service backends
-        termux/       Optional Termux/runit adapter and diagnostics
-        tools.py      Runtime Tool adapters and registration
-        health.py     Structured health results
-        diagnostics.py Runtime diagnostics
-    tools/
-        contracts/    Tool protocol, descriptors, capabilities
-        registry/     ToolRegistry
-    config/           OperationsConfig, load_config()
-    logging/          AuditRecord, AuditRecorder, in-memory recorder
-    safety/           SafetyClass and deny-by-default SafetyPolicy
-    adapters/         Reserved for ecosystem integration adapters
+    core/             Operations, execution, results
+    runtime/          Process/service/health/diagnostics runtime layer
+    runtime/termux/   Optional Termux/runit adapter and configuration
+    adapters/hermes/  Optional Hermes-facing interface boundary
+    adapters/ecosystem/ Optional Yasin service adapters
+    safety/           SafetyClass + deny-by-default SafetyPolicy
+    logging/          Structured audit trail
+    cli.py            Standalone operations CLI
+    daemon.py         Optional supervised always-on daemon
 ```
 
 ## Safety boundary
 
-Every `Operation` carries an explicit `SafetyClass`
-(`READ_ONLY` or `MUTATING`). `SafetyPolicy` enforces the boundary
-before a tool can execute:
+Every operation has an explicit `SafetyClass`. Mutations are denied
+without explicit confirmation by default. Protected targets, dry-run,
+retry limits, timeouts, actor/source attribution, correlation IDs, and
+audit records are handled by the Core Executor and SafetyPolicy.
+Adapters cannot bypass that boundary.
 
-- read-only operations are permitted without confirmation;
-- mutating operations require explicit confirmation by default;
-- protected targets are denied unless explicitly allowlisted;
-- dry-run produces a deterministic plan and never calls a tool;
-- retry limits and execution timeout policy are explicit;
-- denied, successful, failed, and dry-run outcomes can be audited with
-  actor, source, correlation ID, timestamp, target, and duration.
+## CLI
 
-The executor never exposes unrestricted shell execution and never
-bypasses the policy layer.
+```sh
+python -m yasin_operations.cli doctor
+python -m yasin_operations.cli status
+python -m yasin_operations.cli health
+python -m yasin_operations.cli restart <service> --dry-run
+python -m yasin_operations.cli restart <service> --confirm
+```
 
-## Termux adapter
+Use `--json` for machine-readable output.
 
-The Termux integration is optional and isolated under
-`yasin_operations/runtime/termux/`. It detects the Termux/runit
-environment, observes registered services, performs lifecycle actions
-using fixed argument vectors, and reports startup/always-on diagnostics.
-It does not modify external Yasin service definitions and is not
-required for the existing services to operate.
+## Termux / runit
+
+The optional always-on service definition is under
+`deploy/termux/runit/yasin-operations/`. It runs the standalone daemon
+under `runit`; it does not modify existing Hermes, Yasin-AI, YasinPress,
+or YasinRelay service definitions.
+
+Runtime configuration is environment-backed, including the runit
+service root, `sv` path, registered service names, execution timeout,
+and health interval.
+
+## Verification
+
+The repository includes unit, integration, safety, adapter, CLI,
+resource, and failure-isolation tests. GitHub Actions runs the full
+suite on Python 3.11 through 3.14.
+
+See `docs/OPERATIONS-RUNBOOK.md` for the production/operator workflow.
 
 ## Status
 
-Issues #1 through #3 are implemented on `main`. Issue #4 is the
-current safety/permissions/audit implementation. Issues #5 through #7
-remain planned work.
-
-## Development
-
-```bash
-pip install -e ".[dev]"
-python -m pytest -q
-```
-
-A GitHub Actions test matrix validates the suite on supported Python
-versions.
+Issues #1 through #7 are implemented on `main` after their respective
+pull requests. The repository is now at the production-integration
+stage; no target Yasin repository is required for standalone operation.

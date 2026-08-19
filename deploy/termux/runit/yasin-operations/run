@@ -1,0 +1,4 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Optional always-on runit service for Yasin-Operations.
+# This definition is independent of existing Yasin services.
+exec /data/data/com.termux/files/usr/bin/python -m yasin_operations.daemon
