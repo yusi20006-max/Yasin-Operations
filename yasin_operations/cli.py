@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from typing import Any, Sequence
 
 from yasin_operations.config.config import OperationsConfig
@@ -11,6 +10,7 @@ from yasin_operations.core.execution.executor import Executor
 from yasin_operations.core.operations.models import Operation, OperationTarget
 from yasin_operations.logging.audit import InMemoryAuditRecorder
 from yasin_operations.runtime.resources import snapshot as resource_snapshot
+from yasin_operations.runtime.service import ServiceState
 from yasin_operations.runtime.termux.config import TermuxRuntimeConfig
 from yasin_operations.runtime.termux.diagnostics import detect_termux
 from yasin_operations.runtime.termux.runit import RunitServiceBackend
@@ -21,6 +21,13 @@ from yasin_operations.tools.registry.registry import ToolRegistry
 
 
 MUTATING_COMMANDS = {"start", "stop", "restart"}
+STATUS_EXIT_OK = 0
+STATUS_EXIT_DEGRADED = 1
+STATUS_EXIT_ERROR = 2
+HEALTH_EXIT_OK = 0
+HEALTH_EXIT_DEGRADED = 1
+HEALTH_EXIT_UNHEALTHY = 2
+SCHEMA_VERSION = 1
 
 
 def build_runtime() -> tuple[Executor, TermuxRuntimeConfig, InMemoryAuditRecorder]:
@@ -60,9 +67,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _operation_for_command(command: str, service: str) -> Operation:
-    operation = f"service_{command}"
     return Operation(
-        name=operation,
+        name=f"service_{command}",
         target=OperationTarget(kind="service", identifier=service),
         safety_class=SafetyClass.MUTATING,
     )
@@ -78,6 +84,36 @@ def _emit(value: Any, as_json: bool) -> None:
         print(value)
 
 
+def _service_summary(services: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    counts = {"running": 0, "stopped": 0, "degraded": 0, "failed": 0, "unknown": 0, "other": 0}
+    for service in services:
+        state = str(service.get("state", "unknown"))
+        if state in counts:
+            counts[state] += 1
+        else:
+            counts["other"] += 1
+    total = len(services)
+    if counts["failed"] or counts["unknown"] or counts["other"]:
+        health = "unhealthy"
+        exit_code = STATUS_EXIT_ERROR
+    elif counts["degraded"] or counts["stopped"] or counts["running"] != total:
+        health = "degraded"
+        exit_code = STATUS_EXIT_DEGRADED
+    else:
+        health = "healthy"
+        exit_code = STATUS_EXIT_OK
+    return {"total": total, "counts": counts, "health": health, "exit_code": exit_code}
+
+
+def _health_exit_code(health: dict[str, Any], service_summary: dict[str, Any]) -> int:
+    status = str(health.get("status", "unknown"))
+    if status in {"unhealthy", "timeout"} or service_summary["health"] == "unhealthy":
+        return HEALTH_EXIT_UNHEALTHY
+    if status in {"degraded", "unknown"} or service_summary["health"] == "degraded":
+        return HEALTH_EXIT_DEGRADED
+    return HEALTH_EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -86,6 +122,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "doctor":
         diagnostics = detect_termux(config.service_root)
         result = {
+            "schema_version": SCHEMA_VERSION,
             "termux": diagnostics.as_dict(),
             "resources": resource_snapshot().as_dict(),
             "configuration": {
@@ -108,11 +145,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             actor="cli",
             source="cli.status",
         )
-        _emit({"success": result.success, "data": dict(result.data or {}), "error": _error(result)}, args.as_json)
-        return 0 if result.success else 2
+        data = dict(result.data or {})
+        services = list(data.get("services", []))
+        summary = _service_summary(services)
+        payload = {
+            "schema_version": SCHEMA_VERSION,
+            "success": result.success,
+            "data": {"services": services, "summary": summary},
+            "error": _error(result),
+        }
+        _emit(payload, args.as_json)
+        if not result.success:
+            return STATUS_EXIT_ERROR
+        return int(summary["exit_code"])
 
     if args.command == "health":
-        health = executor.execute(
+        health_result = executor.execute(
             Operation(
                 name="health_check",
                 target=OperationTarget(kind="self", identifier="runtime"),
@@ -121,16 +169,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             actor="cli",
             source="cli.health",
         )
-        _emit(
-            {
-                "success": health.success,
-                "health": dict(health.data or {}),
-                "resources": resource_snapshot().as_dict(),
-                "error": _error(health),
-            },
-            args.as_json,
+        service_result = executor.execute(
+            Operation(
+                name="list_services",
+                target=OperationTarget(kind="service", identifier="*"),
+                safety_class=SafetyClass.READ_ONLY,
+            ),
+            actor="cli",
+            source="cli.health.services",
         )
-        return 0 if health.success else 2
+        health = dict(health_result.data or {})
+        service_data = dict(service_result.data or {})
+        services = list(service_data.get("services", []))
+        service_summary = _service_summary(services)
+        payload = {
+            "schema_version": SCHEMA_VERSION,
+            "success": health_result.success and service_result.success,
+            "health": health,
+            "services": {"items": services, "summary": service_summary},
+            "resources": resource_snapshot().as_dict(),
+            "error": _error(health_result) or _error(service_result),
+        }
+        _emit(payload, args.as_json)
+        if not payload["success"]:
+            return HEALTH_EXIT_UNHEALTHY
+        return _health_exit_code(health, service_summary)
 
     operation = _operation_for_command(args.command, args.service)
     result = executor.execute(
