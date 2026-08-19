@@ -1,20 +1,14 @@
 """Independence test.
 
 Confirms every public module imports cleanly and the core contracts
-can be used end-to-end (construct an operation, register a tool,
-execute it) with no dependency on Hermes, Yasin-AI, YasinPress,
-YasinRelay, Termux services, or any external API. This test file
-itself only imports from yasin_operations and the standard library.
+can be used end-to-end without external Yasin dependencies. The
+internal Hermes adapter namespace is intentionally allowed; external
+Hermes imports remain forbidden.
 """
 
 from yasin_operations.config.config import OperationsConfig, load_config
 from yasin_operations.core.execution.executor import Executor
-from yasin_operations.core.operations.models import (
-    Operation,
-    OperationState,
-    OperationStatus,
-    OperationTarget,
-)
+from yasin_operations.core.operations.models import Operation, OperationState, OperationStatus, OperationTarget
 from yasin_operations.core.results.models import OperationResult
 from yasin_operations.logging.audit import AuditRecord, InMemoryAuditRecorder
 from yasin_operations.safety.classification import SafetyClass
@@ -39,16 +33,14 @@ class _EchoTool:
 
 
 def test_full_independent_flow():
-    """Construct config, registry, executor, an operation, and an
-    audit trail entirely from this package's own contracts."""
     config = load_config()
     assert isinstance(config, OperationsConfig)
 
     registry = ToolRegistry()
     registry.register(_EchoTool())
 
-    executor = Executor(registry)
     recorder = InMemoryAuditRecorder()
+    executor = Executor(registry, audit_recorder=recorder)
 
     operation = Operation(
         name="echo",
@@ -59,21 +51,8 @@ def test_full_independent_flow():
 
     state = OperationState(operation_id=operation.id)
     state = state.transition_to(OperationStatus.RUNNING)
-
     result = executor.execute(operation)
-
-    state = state.transition_to(
-        OperationStatus.SUCCEEDED if result.success else OperationStatus.FAILED
-    )
-
-    recorder.record(
-        AuditRecord(
-            operation_id=operation.id,
-            operation_name=operation.name,
-            target=operation.target,
-            status=state.status,
-        )
-    )
+    state = state.transition_to(OperationStatus.SUCCEEDED if result.success else OperationStatus.FAILED)
 
     assert result.success is True
     assert result.data == {"message": "hello"}
@@ -82,27 +61,12 @@ def test_full_independent_flow():
 
 
 def test_no_import_of_external_yasin_packages():
-    """Static guard: scans this package's own source for accidental
-    *import statements* referencing other Yasin repositories or
-    Hermes, so a future contributor cannot silently introduce
-    coupling that violates the independence requirement.
-
-    Only actual `import`/`from ... import` lines are checked, not
-    arbitrary text -- several modules correctly mention "Hermes" or
-    other ecosystem project names in docstrings/comments to explain
-    that no dependency on them exists, and that is not a violation.
-    """
+    """Static guard against accidental external project coupling."""
     import ast
     import pathlib
 
     package_root = pathlib.Path(__file__).parent.parent / "yasin_operations"
-    forbidden_substrings = (
-        "yasin_ai",
-        "yasinai",
-        "yasinpress",
-        "yasinrelay",
-        "hermes",
-    )
+    forbidden_substrings = ("yasin_ai", "yasinai", "yasinpress", "yasinrelay")
 
     offending = []
     for path in package_root.rglob("*.py"):
@@ -116,8 +80,9 @@ def test_no_import_of_external_yasin_packages():
 
             for name in module_names:
                 lowered = name.lower()
-                for term in forbidden_substrings:
-                    if term in lowered:
-                        offending.append((str(path), name))
+                if lowered == "hermes" or lowered.startswith("hermes."):
+                    offending.append((str(path), name))
+                elif any(term in lowered for term in forbidden_substrings):
+                    offending.append((str(path), name))
 
-    assert offending == [], f"Found forbidden import references: {offending}"
+    assert offending == [], f"Found forbidden external imports: {offending}"
