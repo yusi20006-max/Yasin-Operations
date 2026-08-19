@@ -6,13 +6,31 @@ fixed argv lists; no shell strings or arbitrary user commands are exposed.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
 from yasin_operations.runtime.process import ProcessInspector
-from yasin_operations.runtime.service import ServiceBackend, ServiceCommandError, ServiceInfo, ServiceNotFoundError, ServiceState
+from yasin_operations.runtime.service import (
+    ServiceBackend,
+    ServiceCommandError,
+    ServiceInfo,
+    ServiceNotFoundError,
+    ServiceState,
+)
+
+
+DEFAULT_STATE = ServiceState.UNKNOWN
+_STATUS_PREFIXES = {
+    "run": ServiceState.RUNNING,
+    "down": ServiceState.STOPPED,
+    "finish": ServiceState.STOPPED,
+    "fail": ServiceState.FAILED,
+    "timeout": ServiceState.FAILED,
+}
+_STATUS_RE = re.compile(r"^(?P<state>run|down|finish|fail|timeout|supervise):\s*")
 
 
 @dataclass(frozen=True)
@@ -55,10 +73,38 @@ class RunitServiceBackend(ServiceBackend):
         if not self.available:
             return ServiceInfo(name=name, state=ServiceState.UNKNOWN, desired_state=d.desired_state, health_state="unavailable", message="runit adapter unavailable", extra={"adapter": "termux-runit"})
         result = self._sv(d, "status")
-        matches = self._inspector.find_by_name(d.process_pattern) if d.process_pattern else []
+        state = self._normalize_status(result.stdout, result.stderr, result.returncode)
+        matches = self._inspector.find_by_name(d.process_pattern) if d.process_pattern and state == ServiceState.RUNNING else []
         pid = min((p.pid for p in matches), default=None)
-        running = result.returncode == 0
-        return ServiceInfo(name=name, state=ServiceState.RUNNING if running else ServiceState.STOPPED, pid=pid, desired_state=d.desired_state, health_state="ok" if running else "stopped", message=(result.stdout or result.stderr).strip()[:200] or None, extra={"adapter": "termux-runit", "service_dir": d.service_dir or str(self._root / name)})
+        health_state = {
+            ServiceState.RUNNING: "ok",
+            ServiceState.STOPPED: "stopped",
+            ServiceState.FAILED: "failed",
+            ServiceState.DEGRADED: "degraded",
+            ServiceState.UNKNOWN: "unknown",
+            ServiceState.STARTING: "starting",
+            ServiceState.STOPPING: "stopping",
+        }[state]
+        output = (result.stdout or result.stderr or "").strip()
+        return ServiceInfo(
+            name=name,
+            state=state,
+            pid=pid,
+            desired_state=d.desired_state,
+            health_state=health_state,
+            message=output[:200] or None,
+            extra={"adapter": "termux-runit", "service_dir": d.service_dir or str(self._root / name)},
+        )
+
+    @staticmethod
+    def _normalize_status(stdout: str, stderr: str, returncode: int) -> ServiceState:
+        """Map runit's status line to actual state; exit code is command status only."""
+        output = (stdout or stderr or "").strip()
+        first_line = next((line.strip() for line in output.splitlines() if line.strip()), "")
+        match = _STATUS_RE.match(first_line)
+        if match:
+            return _STATUS_PREFIXES.get(match.group("state"), DEFAULT_STATE)
+        return DEFAULT_STATE
 
     def start(self, name: str) -> ServiceInfo:
         return self._mutate(name, "up")
