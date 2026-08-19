@@ -25,6 +25,7 @@ yasin_operations/
     runtime/
         local/        Portable local process/service backends
         termux/       Optional Termux/runit adapter and diagnostics
+        tools.py      Runtime Tool adapters and registration
         health.py     Structured health results
         diagnostics.py Runtime diagnostics
     tools/
@@ -64,8 +65,9 @@ required for the existing services to operate.
 
 ## Status
 
-Issues #1 through #4 are implemented on `main` after their respective
-pull requests. Issues #5 through #7 remain planned work.
+Issues #1 through #3 are implemented on `main`. Issue #4 is the
+current safety/permissions/audit implementation. Issues #5 through #7
+remain planned work.
 
 ## Development
 
