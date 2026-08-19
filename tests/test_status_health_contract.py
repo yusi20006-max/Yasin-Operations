@@ -66,7 +66,22 @@ def test_health_exit_code_is_deterministic(health: dict, service_health: str, ex
 
 def test_resource_snapshot_survives_unavailable_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(resources.resource, "getrusage", lambda *_args: (_ for _ in ()).throw(OSError("unavailable")))
-    monkeypatch.setattr(resources.os, "getloadavg", lambda: (_ for _ in ()).throw(OSError("unavailable")))
+    getloadavg = getattr(resources.os, "getloadavg", None)
+    if getloadavg is not None:
+        monkeypatch.setattr(resources.os, "getloadavg", lambda: (_ for _ in ()).throw(OSError("unavailable")))
+
+    result = resources.snapshot().as_dict()
+    assert result["rss_bytes"] is None
+    assert result["user_cpu_seconds"] == 0.0
+    assert result["system_cpu_seconds"] == 0.0
+    assert result["load_average_1m"] is None
+    json.dumps(result)
+
+
+def test_resource_snapshot_survives_missing_load_average_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(resources.resource, "getrusage", lambda *_args: (_ for _ in ()).throw(OSError("unavailable")))
+    monkeypatch.delattr(resources.os, "getloadavg", raising=False)
+
     result = resources.snapshot().as_dict()
     assert result["rss_bytes"] is None
     assert result["user_cpu_seconds"] == 0.0
