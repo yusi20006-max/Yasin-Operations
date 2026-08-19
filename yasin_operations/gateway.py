@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Mapping, TextIO
 
@@ -9,6 +10,17 @@ from yasin_operations.adapters.hermes.adapter import HermesOperationsAdapter
 from yasin_operations.adapters.hermes.contracts import HermesOperationRequest, HermesOperationResponse
 
 GATEWAY_SCHEMA_VERSION = 1
+DEFAULT_MAX_LINE_BYTES = 64 * 1024
+DEFAULT_MAX_PARAMETER_BYTES = 32 * 1024
+DEFAULT_MAX_IDENTIFIER_LENGTH = 256
+DEFAULT_RECENT_REQUEST_IDS = 1024
+
+
+def _validate_identifier(name: str, value: str, maximum: int = DEFAULT_MAX_IDENTIFIER_LENGTH) -> None:
+    if not value or len(value) > maximum:
+        raise ValueError(f"{name} must be 1..{maximum} characters")
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise ValueError(f"{name} must not contain control characters")
 
 
 @dataclass(frozen=True)
@@ -32,8 +44,28 @@ class GatewayResponse:
 class JsonlGateway:
     """Serve validated operations over stdin/stdout JSONL."""
 
-    def __init__(self, adapter: HermesOperationsAdapter) -> None:
+    def __init__(
+        self,
+        adapter: HermesOperationsAdapter,
+        *,
+        max_line_bytes: int = DEFAULT_MAX_LINE_BYTES,
+        max_parameter_bytes: int = DEFAULT_MAX_PARAMETER_BYTES,
+        max_identifier_length: int = DEFAULT_MAX_IDENTIFIER_LENGTH,
+        recent_request_ids: int = DEFAULT_RECENT_REQUEST_IDS,
+        reject_duplicates: bool = True,
+    ) -> None:
+        if max_line_bytes < 1024 or max_parameter_bytes < 256:
+            raise ValueError("gateway size limits are too small")
+        if max_identifier_length < 16 or recent_request_ids < 0:
+            raise ValueError("gateway protocol limits are invalid")
         self._adapter = adapter
+        self._max_line_bytes = max_line_bytes
+        self._max_parameter_bytes = max_parameter_bytes
+        self._max_identifier_length = max_identifier_length
+        self._recent_request_ids = recent_request_ids
+        self._reject_duplicates = reject_duplicates
+        self._seen_ids: set[str] = set()
+        self._seen_order: deque[str] = deque()
         self._stopped = False
 
     @property
@@ -43,9 +75,23 @@ class JsonlGateway:
     def stop(self) -> None:
         self._stopped = True
 
+    def _remember_request_id(self, request_id: str) -> None:
+        if not self._recent_request_ids:
+            return
+        if request_id in self._seen_ids:
+            if self._reject_duplicates:
+                raise ValueError("duplicate request_id")
+            return
+        self._seen_ids.add(request_id)
+        self._seen_order.append(request_id)
+        while len(self._seen_order) > self._recent_request_ids:
+            self._seen_ids.discard(self._seen_order.popleft())
+
     def handle_line(self, line: str) -> dict[str, Any]:
         request_id = "unknown"
         try:
+            if len(line.encode("utf-8")) > self._max_line_bytes:
+                raise ValueError("request exceeds maximum line size")
             payload = json.loads(line)
             if not isinstance(payload, Mapping):
                 raise ValueError("request envelope must be a JSON object")
@@ -58,6 +104,18 @@ class JsonlGateway:
                 raise ValueError("request must be a JSON object")
             request = HermesOperationRequest.from_mapping(request_payload)
             request_id = request.request_id
+            _validate_identifier("request_id", request.request_id, self._max_identifier_length)
+            _validate_identifier("actor", request.actor, self._max_identifier_length)
+            _validate_identifier("source", request.source, self._max_identifier_length)
+            _validate_identifier("operation", request.operation, self._max_identifier_length)
+            _validate_identifier("target_kind", request.target_kind, self._max_identifier_length)
+            _validate_identifier("target_identifier", request.target_identifier, self._max_identifier_length)
+            if request.correlation_id is not None:
+                _validate_identifier("correlation_id", request.correlation_id, self._max_identifier_length)
+            parameter_bytes = len(json.dumps(request.parameters, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            if parameter_bytes > self._max_parameter_bytes:
+                raise ValueError("parameters exceed maximum size")
+            self._remember_request_id(request.request_id)
             response = self._adapter.handle(request)
         except json.JSONDecodeError as exc:
             response = HermesOperationResponse(
