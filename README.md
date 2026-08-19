@@ -9,6 +9,13 @@ YasinPress, YasinRelay, another Yasin repository, an external AI
 provider, or a running external service to import and operate its Core.
 All integrations are optional adapters around Core contracts.
 
+## Package
+
+Current release: `0.1.0`.
+
+Supported Python: `>=3.11`. Hosted CI verifies Python 3.11, 3.12, 3.13,
+and 3.14.
+
 ## Package layout
 
 ```
@@ -101,7 +108,7 @@ The canonical read-only acceptance harness is:
 ```sh
 python scripts/production_acceptance.py
 python scripts/production_acceptance.py --json
-python scripts/production_acceptance.py --live
+python scripts/production_acceptance.py --live --json
 ```
 
 The normal CI workflow runs the non-live acceptance harness on Python
@@ -123,6 +130,7 @@ acceptance harness on Python 3.11 through 3.14 and separately builds,
 installs, and verifies release artifacts.
 
 See `docs/OPERATIONS-RUNBOOK.md` for the production/operator workflow.
+See `docs/RELEASE_READINESS_v0.1.0.md` for the release evidence record.
 
 ## Status
 
@@ -133,7 +141,6 @@ authoritative runit state normalization, adapter contracts, the
 production acceptance harness, release readiness, and CI acceptance
 gating.
 
-The repository is in the production-integration and release-hardening
-stage. Yasin-Operations remains an optional standalone operations
-authority and does not require any target Yasin repository for core
-operation.
+Yasin-Operations `v0.1.0` is release-ready as an optional standalone
+Operations authority. It does not require any target Yasin repository
+for core operation.
