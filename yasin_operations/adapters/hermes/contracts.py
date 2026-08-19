@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-from yasin_operations.core.results.models import OperationError, OperationResult
+from yasin_operations.core.results.models import OperationResult
 from yasin_operations.safety.classification import SafetyClass
 
 
@@ -104,10 +104,6 @@ class HermesOperationResponse:
 
     @classmethod
     def unavailable(cls, request_id: str) -> "HermesOperationResponse":
-        error = OperationError(
-            category="unavailable_dependency",  # normalized below by serialization only
-            message="Yasin-Operations runtime is unavailable",
-        )
         return cls(
             request_id=request_id,
             operation_id=None,
@@ -115,7 +111,7 @@ class HermesOperationResponse:
             status="unavailable",
             error={
                 "category": "unavailable_dependency",
-                "message": error.message,
+                "message": "Yasin-Operations runtime is unavailable",
                 "details": {},
             },
             service_available=False,
