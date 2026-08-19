@@ -20,6 +20,9 @@ yasin_operations/
     adapters/ecosystem/ Optional Yasin service adapters
     safety/           SafetyClass + deny-by-default SafetyPolicy
     logging/          Structured audit trail
+    gateway.py        Optional local JSONL Operations Gateway
+    gateway_cli.py    Gateway command implementation
+    entrypoint.py     Installed CLI router
     cli.py            Standalone operations CLI
     daemon.py         Optional supervised always-on daemon
 ```
@@ -44,6 +47,26 @@ python -m yasin_operations.cli restart <service> --confirm
 
 Use `--json` for machine-readable output.
 
+### Local Operations Gateway
+
+The optional gateway provides a transport-neutral JSONL interface for
+external agents such as Hermes. It uses the existing Hermes operation
+contracts and Executor policy boundary; it does not import or control
+Hermes itself and does not open a network listener.
+
+```sh
+yasin-operations gateway
+```
+
+Requests are newline-delimited JSON. The gateway validates the envelope,
+converts it to a typed operation request, and emits one machine-readable
+response per request. Malformed requests are isolated to their own
+response and do not terminate the gateway loop.
+
+The gateway is intentionally local and optional. Existing CLI commands,
+runtime services, and the repository's standalone operation remain
+unchanged when it is not used.
+
 ## Termux / runit
 
 The optional always-on service definition is under
@@ -58,8 +81,8 @@ and health interval.
 ## Verification
 
 The repository includes unit, integration, safety, adapter, CLI,
-resource, and failure-isolation tests. GitHub Actions runs the full
-suite on Python 3.11 through 3.14.
+gateway, resource, and failure-isolation tests. GitHub Actions runs the
+full suite on Python 3.11 through 3.14.
 
 See `docs/OPERATIONS-RUNBOOK.md` for the production/operator workflow.
 
