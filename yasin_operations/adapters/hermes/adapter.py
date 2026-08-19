@@ -9,12 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from yasin_operations.core.execution.executor import Executor
-from yasin_operations.core.operations.models import Operation, OperationTarget
-from yasin_operations.core.results.models import ErrorCategory, OperationError, OperationResult
-from yasin_operations.safety.classification import SafetyClass
-
 from yasin_operations.adapters.hermes.contracts import HermesOperationRequest, HermesOperationResponse
+from yasin_operations.core.execution.executor import Executor
+from yasin_operations.core.operations.models import Operation, OperationMetadata, OperationTarget
+from yasin_operations.core.results.models import ErrorCategory
+from yasin_operations.safety.classification import SafetyClass
 
 
 @dataclass(frozen=True)
@@ -63,7 +62,7 @@ class HermesOperationsAdapter:
             ),
             safety_class=normalized.safety_class,
             parameters=normalized.parameters,
-            metadata={"hermes_request_id": normalized.request_id},
+            metadata=OperationMetadata(values={"hermes_request_id": normalized.request_id}),
         )
         try:
             result = self.executor.execute(
@@ -112,20 +111,18 @@ class HermesOperationsAdapter:
                 "error": "Yasin-Operations runtime is unavailable",
             }
 
-        health = self._read_only_summary(
-            operation="health_check",
-            target_kind="self",
-            target_identifier="runtime",
-        )
-        diagnostics = self._read_only_summary(
-            operation="diagnostics",
-            target_kind="runtime",
-            target_identifier="local",
-        )
         return {
             "available": True,
-            "health": health,
-            "diagnostics": diagnostics,
+            "health": self._read_only_summary(
+                operation="health_check",
+                target_kind="self",
+                target_identifier="runtime",
+            ),
+            "diagnostics": self._read_only_summary(
+                operation="diagnostics",
+                target_kind="runtime",
+                target_identifier="local",
+            ),
         }
 
     def _read_only_summary(
