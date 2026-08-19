@@ -1,3 +1,10 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
 from scripts.production_acceptance import (
     FakeProbe,
     _runit_state,
@@ -31,3 +38,20 @@ def test_ecosystem_acceptance_checks_inject_probes():
     results = check_ecosystem_adapters()
     assert len(results) == 3
     assert all(result.status == "PASS" for result in results)
+
+
+def test_acceptance_cli_emits_successful_json_envelope():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts" / "production_acceptance.py"), "--json"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["summary"]["fail"] == 0
+    assert payload["summary"]["pass"] > 0
+    assert payload["summary"]["skip"] >= 1
