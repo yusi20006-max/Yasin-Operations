@@ -1,6 +1,5 @@
-"""Safety classification and authorization contracts."""
+"""Safety classification package."""
 
 from yasin_operations.safety.classification import SafetyClass
-from yasin_operations.safety.policy import PolicyDecision, SafetyPolicy
 
-__all__ = ["PolicyDecision", "SafetyClass", "SafetyPolicy"]
+__all__ = ["SafetyClass"]
