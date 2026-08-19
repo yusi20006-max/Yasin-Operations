@@ -82,18 +82,31 @@ Runtime configuration is environment-backed, including the runit
 service root, `sv` path, registered service names, execution timeout,
 and health interval.
 
+Runit status is interpreted from its authoritative status prefix rather
+than its process-independent exit code:
+
+- `run:` → actual `running` / healthy
+- `down:` → actual `stopped`
+- `fail:` or `timeout:` → actual `failed`
+- unknown status text → actual `unknown`
+
+`desired_state` is separate from actual runtime state. In particular,
+`down: ... normally up` means the service is currently stopped even if
+runit is configured to keep it supervised.
+
 ## Production acceptance and release readiness
 
 The canonical read-only acceptance harness is:
 
 ```sh
 python scripts/production_acceptance.py
+python scripts/production_acceptance.py --json
 python scripts/production_acceptance.py --live
 ```
 
-The first command is safe for normal CI and skips live runit inspection.
-The `--live` form adds read-only `sv status` checks. No lifecycle mutation
-is performed by either form.
+The normal CI workflow runs the non-live acceptance harness on Python
+3.11 through 3.14. Live service health is an operator/host verification
+step and is not claimed by hosted CI.
 
 Release-readiness checks are available with:
 
@@ -101,21 +114,26 @@ Release-readiness checks are available with:
 python scripts/release_readiness.py --json
 ```
 
-This verifies the authoritative version, repository hygiene, independence
-from external Yasin package imports, and the safe acceptance surface.
-
 ## Verification
 
 The repository includes unit, integration, safety, adapter, CLI,
-gateway, resource, release-readiness, and failure-isolation tests. GitHub
-Actions runs the full suite on Python 3.11 through 3.14 and separately
-builds/tests both wheel and source-distribution artifacts.
+gateway, resource, release-readiness, acceptance, and failure-isolation
+tests. GitHub Actions runs the full suite and canonical non-live
+acceptance harness on Python 3.11 through 3.14 and separately builds,
+installs, and verifies release artifacts.
 
 See `docs/OPERATIONS-RUNBOOK.md` for the production/operator workflow.
 
 ## Status
 
-Issues #1 through #7 are implemented on `main` after their respective
-pull requests. The repository is now at the production-integration and
-release-hardening stage; no target Yasin repository is required for
-standalone operation.
+The original architecture issues (#1–#7) are implemented. Subsequent
+production-readiness work has hardened configuration, CLI contracts,
+packaging, diagnostics, lifecycle handling, resource portability,
+authoritative runit state normalization, adapter contracts, the
+production acceptance harness, release readiness, and CI acceptance
+gating.
+
+The repository is in the production-integration and release-hardening
+stage. Yasin-Operations remains an optional standalone operations
+authority and does not require any target Yasin repository for core
+operation.
