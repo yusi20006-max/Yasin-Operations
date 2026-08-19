@@ -38,7 +38,7 @@ def check_version() -> tuple[bool, str]:
 
 
 def check_repository_hygiene(root: Path) -> tuple[bool, list[str]]:
-    code, stdout, stderr = _run(["git", "ls-files"])
+    code, stdout, stderr = _run(["git", "-C", str(root), "ls-files"])
     if code != 0:
         return False, [f"git ls-files failed: {stderr.strip()}"]
     violations: list[str] = []
