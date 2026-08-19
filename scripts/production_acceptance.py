@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -19,7 +18,7 @@ from yasin_operations.adapters.ecosystem.yasin_relay import YasinRelayAdapter
 from yasin_operations.adapters.hermes.adapter import HermesOperationsAdapter
 from yasin_operations.adapters.hermes.contracts import HermesOperationRequest
 from yasin_operations.core.execution.executor import Executor
-from yasin_operations.core.operations.models import OperationResult
+from yasin_operations.core.results.models import OperationResult
 from yasin_operations.safety.classification import SafetyClass
 from yasin_operations.tools.contracts.tool import ToolCapability, ToolDescriptor
 from yasin_operations.tools.registry.registry import ToolRegistry
@@ -77,11 +76,7 @@ def _run_json(command: list[str]) -> tuple[bool, dict[str, Any], str]:
 
 def check_cli() -> list[Result]:
     results: list[Result] = []
-    commands = (
-        ("doctor-json", "doctor"),
-        ("status-json", "status"),
-        ("health-json", "health"),
-    )
+    commands = (("doctor-json", "doctor"), ("status-json", "status"), ("health-json", "health"))
     for name, command in commands:
         ok, payload, detail = _run_json([sys.executable, "-m", "yasin_operations", "--json", command])
         if not ok:
@@ -170,8 +165,7 @@ def check_live_services(services: tuple[str, ...]) -> list[Result]:
         completed = subprocess.run([sv, "status", service], text=True, capture_output=True, check=False)
         output = (completed.stdout or completed.stderr).strip()
         state = _runit_state(output)
-        status = "PASS" if state == "running" else "FAIL"
-        results.append(Result(f"service:{service}", status, f"state={state}; {output}"))
+        results.append(Result(f"service:{service}", "PASS" if state == "running" else "FAIL", f"state={state}; {output}"))
     return results
 
 
