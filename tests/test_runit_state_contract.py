@@ -22,9 +22,9 @@ class FakeInspector:
 
 def _backend(tmp_path, monkeypatch, output: str, returncode: int = 0):
     service_root = tmp_path / "service"
-    service_root.mkdir()
+    service_root.mkdir(exist_ok=True)
     service_dir = service_root / "yasinpress"
-    service_dir.mkdir()
+    service_dir.mkdir(exist_ok=True)
     sv = tmp_path / "sv"
     sv.write_text("#!/bin/sh\n")
     sv.chmod(sv.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
