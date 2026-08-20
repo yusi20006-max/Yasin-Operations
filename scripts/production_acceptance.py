@@ -19,10 +19,10 @@ from yasin_operations.adapters.hermes.adapter import HermesOperationsAdapter
 from yasin_operations.adapters.hermes.contracts import HermesOperationRequest
 from yasin_operations.core.execution.executor import Executor
 from yasin_operations.core.results.models import OperationResult
+from yasin_operations.gateway import GATEWAY_SCHEMA_VERSION
 from yasin_operations.safety.classification import SafetyClass
 from yasin_operations.tools.contracts.tool import ToolCapability, ToolDescriptor
 from yasin_operations.tools.registry.registry import ToolRegistry
-
 
 SERVICES = ("hermes-agent", "yasin-ai", "yasinpress", "yasinrelay")
 
@@ -64,8 +64,8 @@ class FakeProbe(ServiceProbe):
         )
 
 
-def _run_json(command: list[str]) -> tuple[bool, dict[str, Any], str]:
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+def _run_json(command: list[str], *, input_text: str | None = None) -> tuple[bool, dict[str, Any], str]:
+    completed = subprocess.run(command, input=input_text, text=True, capture_output=True, check=False)
     output = completed.stdout.strip()
     try:
         payload = json.loads(output)
@@ -79,10 +79,44 @@ def check_cli() -> list[Result]:
     commands = (("doctor-json", "doctor"), ("status-json", "status"), ("health-json", "health"))
     for name, command in commands:
         ok, payload, detail = _run_json([sys.executable, "-m", "yasin_operations", "--json", command])
-        if not ok:
-            results.append(Result(name, "FAIL", detail or str(payload)))
-        else:
-            results.append(Result(name, "PASS"))
+        results.append(Result(name, "PASS" if ok else "FAIL", detail or ("" if ok else str(payload))))
+    return results
+
+
+def check_gateway_process() -> list[Result]:
+    results: list[Result] = []
+    help_run = subprocess.run([sys.executable, "-m", "yasin_operations.gateway_cli", "--help"], text=True, capture_output=True, check=False)
+    results.append(Result("gateway-help", "PASS" if help_run.returncode == 0 and help_run.stderr == "" else "FAIL", help_run.stderr.strip()))
+
+    version_run = subprocess.run([sys.executable, "-m", "yasin_operations.gateway_cli", "--version"], text=True, capture_output=True, check=False)
+    results.append(Result("gateway-version", "PASS" if version_run.returncode == 0 and version_run.stdout.strip() == "gateway-schema-1" and version_run.stderr == "" else "FAIL", version_run.stderr.strip()))
+
+    request = {
+        "schema_version": GATEWAY_SCHEMA_VERSION,
+        "request": {
+            "operation": "health_check",
+            "target_kind": "self",
+            "target_identifier": "runtime",
+            "safety_class": "read_only",
+            "request_id": "acceptance-gateway-001",
+        },
+    }
+    smoke = subprocess.run(
+        [sys.executable, "-m", "yasin_operations.gateway_cli"],
+        input=json.dumps(request) + "\n",
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=10,
+    )
+    try:
+        response = json.loads(smoke.stdout.strip())
+        shape_ok = set(response) == {"schema_version", "request_id", "operation_id", "success", "status", "data", "error", "service_available"}
+        payload_ok = response.get("schema_version") == GATEWAY_SCHEMA_VERSION and response.get("request_id") == "acceptance-gateway-001"
+    except json.JSONDecodeError:
+        shape_ok = payload_ok = False
+        response = {}
+    results.append(Result("gateway-jsonl-round-trip", "PASS" if smoke.returncode == 0 and smoke.stderr == "" and shape_ok and payload_ok else "FAIL", str(response) if not (shape_ok and payload_ok) else ""))
     return results
 
 
@@ -146,7 +180,7 @@ def main() -> int:
     parser.add_argument("--services", default=",".join(SERVICES), help="comma-separated live service names")
     parser.add_argument("--json", action="store_true", help="emit machine-readable results")
     args = parser.parse_args()
-    results = check_cli() + check_hermes() + check_ecosystem_adapters() + repository_search()
+    results = check_cli() + check_gateway_process() + check_hermes() + check_ecosystem_adapters() + repository_search()
     if args.live:
         services = tuple(item.strip() for item in args.services.split(",") if item.strip())
         results.extend(check_live_services(services))
