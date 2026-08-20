@@ -7,18 +7,19 @@ from yasin_operations.logging.audit import AuditRecord, InMemoryAuditRecorder
 
 
 def _record(operation_id="op-1", **kwargs):
-    return AuditRecord(
-        operation_id=operation_id,
-        operation_name="status",
-        target=OperationTarget(kind="service", identifier="demo"),
-        status=OperationStatus.SUCCEEDED,
-        timestamp=datetime.now(timezone.utc),
-        actor="operator",
-        source="cli",
-        correlation_id="corr-1",
-        duration_ms=4.2,
-        **kwargs,
-    )
+    values = {
+        "operation_id": operation_id,
+        "operation_name": "status",
+        "target": OperationTarget(kind="service", identifier="demo"),
+        "status": OperationStatus.SUCCEEDED,
+        "timestamp": datetime.now(timezone.utc),
+        "actor": "operator",
+        "source": "cli",
+        "correlation_id": "corr-1",
+        "duration_ms": 4.2,
+    }
+    values.update(kwargs)
+    return AuditRecord(**values)
 
 
 def test_audit_record_carries_required_attribution_fields():
