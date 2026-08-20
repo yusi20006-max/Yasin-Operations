@@ -13,26 +13,26 @@ All integrations are optional adapters around Core contracts.
 
 Current release: `0.1.0`.
 
-Supported Python: `>=3.11`. Hosted CI verifies Python 3.11, 3.12, 3.13,
-and 3.14.
+Supported Python: `>=3.11`. Hosted CI is intended to verify Python 3.11,
+3.12, 3.13, and 3.14.
 
 ## Package layout
 
-```
+```text
 yasin_operations/
-    core/             Operations, execution, results
-    runtime/          Process/service/health/diagnostics runtime layer
-    runtime/termux/   Optional Termux/runit adapter and configuration
-    adapters/hermes/  Optional Hermes-facing interface boundary
-    adapters/ecosystem/ Optional Yasin service adapters
-    safety/           SafetyClass + deny-by-default SafetyPolicy
-    logging/          Structured audit trail
-    gateway.py        Optional local JSONL Operations Gateway
-    gateway_cli.py    Gateway command implementation
-    entrypoint.py     Installed CLI router
-    version.py        Authoritative package version
-    cli.py            Standalone operations CLI
-    daemon.py         Optional supervised always-on daemon
+    core/                 Operations, execution, results
+    runtime/              Process/service/health/diagnostics runtime layer
+    runtime/termux/       Optional Termux/runit adapter and configuration
+    adapters/hermes/      Optional Hermes-facing interface boundary
+    adapters/ecosystem/   Optional Yasin service adapters
+    safety/               SafetyClass + deny-by-default SafetyPolicy
+    logging/              Structured audit trail
+    gateway.py            Optional local JSONL Operations Gateway
+    gateway_cli.py        Gateway command implementation
+    entrypoint.py         Installed CLI router
+    version.py            Authoritative package version
+    cli.py                 Standalone operations CLI
+    daemon.py             Optional supervised always-on daemon
 ```
 
 ## Safety boundary
@@ -61,7 +61,7 @@ version.
 ### Local Operations Gateway
 
 The optional gateway provides a transport-neutral JSONL interface for
-external agents such as Hermes. It uses the existing Hermes operation
+external agents such as Hermes. It uses the existing typed operation
 contracts and Executor policy boundary; it does not import or control
 Hermes itself and does not open a network listener.
 
@@ -75,12 +75,16 @@ response per request. Malformed requests are isolated to their own
 response and do not terminate the gateway loop.
 
 The gateway is intentionally local and optional. Existing CLI commands,
-runtime services, and the repository's standalone operation remain
-unchanged when it is not used.
+runtime services, and standalone operation remain unchanged when it is
+not used.
 
-The JSONL gateway is **not an MCP server**. No MCP implementation is
-currently part of Yasin-Operations; MCP integration, if later required,
-must be tracked as a separate architectural/integration decision.
+**Transport boundary:** the JSONL gateway is **not an MCP server**. There
+is currently no MCP implementation in Yasin-Operations and Hermes MCP
+configuration is an external client concern. A future MCP integration,
+if required by the ecosystem architecture, must be introduced as a
+separate protocol adapter with its own contract, discovery, tool-call,
+and security tests. JSONL verification must not be represented as MCP
+verification.
 
 ## Termux / runit
 
@@ -96,10 +100,10 @@ and health interval.
 Runit status is interpreted from its authoritative status prefix rather
 than its process-independent exit code:
 
-- `run:` → actual `running` / healthy
-- `down:` → actual `stopped`
-- `fail:` or `timeout:` → actual `failed`
-- unknown status text → actual `unknown`
+- `run:` -> actual `running` / healthy
+- `down:` -> actual `stopped`
+- `fail:` or `timeout:` -> actual `failed`
+- unknown status text -> actual `unknown`
 
 `desired_state` is separate from actual runtime state. In particular,
 `down: ... normally up` means the service is currently stopped even if
@@ -115,9 +119,9 @@ python scripts/production_acceptance.py --json
 python scripts/production_acceptance.py --live --json
 ```
 
-The normal CI workflow runs the non-live acceptance harness on Python
-3.11 through 3.14. Live service health is an operator/host verification
-step and is not claimed by hosted CI.
+The normal CI workflow covers the non-live acceptance surface. Live
+service health is an operator/host verification step and must never be
+inferred from hosted CI results.
 
 Release-readiness checks are available with:
 
@@ -125,38 +129,54 @@ Release-readiness checks are available with:
 python scripts/release_readiness.py --json
 ```
 
-The complete v0.1.0 verification order and the distinction between
-hosted CI and live Termux verification are defined in
-`docs/RELEASE_PROCESS.md`.
+The canonical release procedure and the distinction between hosted CI
+and live host verification are defined in `docs/RELEASE_PROCESS.md`.
 
-## Verification
+## Verification evidence policy
 
-The repository includes unit, integration, safety, adapter, CLI,
-gateway, resource, release-readiness, acceptance, and failure-isolation
-tests. GitHub Actions runs the full suite and canonical non-live
-acceptance harness on Python 3.11 through 3.14 and separately builds,
-installs, and verifies release artifacts.
+Documentation deliberately distinguishes three evidence classes:
 
-See `docs/OPERATIONS-RUNBOOK.md` for the production/operator workflow.
-See `docs/RELEASE_READINESS_v0.1.0.md` for the release evidence record.
-See `docs/RELEASE_PROCESS.md` for the canonical release procedure.
-See `docs/ARCHITECTURE-RECONCILIATION.md` for the cross-project
-architecture and status reconciliation.
+1. **Repository evidence** — source code, tests, packaging metadata, and
+   checked-in acceptance/release artifacts.
+2. **Hosted CI evidence** — workflow results produced by GitHub Actions;
+   these do not prove the health of a user's local services.
+3. **Live host evidence** — operator-run Termux/runit verification; this
+   is time-bound and must not be presented as a current health claim
+   unless a fresh live run is available.
+
+The repository does not treat the presence of a Hermes CLI or Hermes MCP
+command as evidence that Yasin-Operations implements MCP connectivity.
+
+## Documentation map
+
+- `docs/OPERATIONS-RUNBOOK.md` — operator workflows for status, health,
+  diagnostics and lifecycle actions.
+- `docs/TRANSPORT-BOUNDARY.md` — external transport and trust boundary,
+  including the explicit JSONL-vs-MCP distinction.
+- `docs/ARCHITECTURE-RECONCILIATION.md` — architecture/source-of-truth
+  reconciliation.
+- `docs/AUTHORIZATION_MODEL.md` — authorization and safety model.
+- `docs/EXECUTION-SEMANTICS.md` — retries, cancellation, idempotency,
+  timeouts and resource limits.
+- `docs/GATEWAY-INTEGRATION-TEST-MATRIX.md` — external gateway test
+  matrix and adversarial verification.
+- `docs/RELEASE_PROCESS.md` — canonical release procedure.
+- `docs/RELEASE_READINESS_v0.1.0.md` — release evidence record.
+- `docs/PRODUCTION-DOCUMENTATION-RECONCILIATION.md` — current
+  documentation/source-of-truth reconciliation record.
 
 ## Status
 
 The original architecture issues (#1–#7) are implemented. Subsequent
 production-readiness work has hardened configuration, CLI contracts,
 packaging, diagnostics, lifecycle handling, resource portability,
-authoritative runit state normalization, adapter contracts, the
-production acceptance harness, release readiness, and CI acceptance
-gating.
+authoritative runit state normalization, execution semantics, ecosystem
+adapter contracts, gateway integration, acceptance testing, release
+readiness, and CI acceptance gating.
 
-Yasin-Operations `v0.1.0` has repository-local release evidence and is
-intended to remain an optional standalone Operations authority. This
-repository-local readiness statement is **not** an ecosystem-wide
-architecture certification. YASIN-DOCS currently records
-Yasin-Operations as a newly registered, provisional project until
-cross-project architecture verification is explicitly promoted there.
+Yasin-Operations `v0.1.0` is a repository-local standalone release
+candidate/readiness state. This statement is **not** an ecosystem-wide
+architecture certification. YASIN-DOCS remains the architectural source
+of truth for cross-project status and must be reconciled independently.
 
 It does not require any target Yasin repository for core operation.
