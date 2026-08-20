@@ -1,7 +1,6 @@
 from yasin_operations.adapters.hermes.adapter import HermesOperationsAdapter
 from yasin_operations.adapters.hermes.contracts import HermesOperationRequest
 from yasin_operations.core.execution.executor import Executor
-from yasin_operations.core.operations.models import OperationTarget
 from yasin_operations.core.results.models import OperationResult
 from yasin_operations.safety.classification import SafetyClass
 from yasin_operations.tools.contracts.tool import ToolCapability, ToolDescriptor
@@ -89,3 +88,54 @@ def test_health_summary_never_requires_mutation():
     assert summary["available"] is True
     assert summary["health"]["status"] == "failed"
     assert summary["diagnostics"]["status"] == "failed"
+
+
+def test_string_boolean_is_rejected_in_contract():
+    try:
+        HermesOperationRequest.from_mapping(
+            {
+                "operation": "status",
+                "target_kind": "service",
+                "target_identifier": "demo",
+                "safety_class": "read_only",
+                "confirmation": "false",
+            }
+        )
+    except ValueError as exc:
+        assert "confirmation" in str(exc)
+    else:
+        raise AssertionError("string boolean must not be coerced")
+
+
+def test_unknown_fields_are_rejected_in_contract():
+    try:
+        HermesOperationRequest.from_mapping(
+            {
+                "operation": "status",
+                "target_kind": "service",
+                "target_identifier": "demo",
+                "safety_class": "read_only",
+                "extra": "unexpected",
+            }
+        )
+    except ValueError as exc:
+        assert "unknown request field" in str(exc)
+    else:
+        raise AssertionError("unknown request field must be rejected")
+
+
+def test_non_string_request_identifiers_are_rejected():
+    try:
+        HermesOperationRequest.from_mapping(
+            {
+                "operation": "status",
+                "target_kind": "service",
+                "target_identifier": "demo",
+                "safety_class": "read_only",
+                "request_id": 123,
+            }
+        )
+    except ValueError as exc:
+        assert "request_id" in str(exc)
+    else:
+        raise AssertionError("request_id must remain a string")
