@@ -62,11 +62,26 @@ def test_status_uses_process_observation(tmp_path: Path, monkeypatch):
     assert info.extra["adapter"] == "termux-runit"
 
 
-def test_mutations_use_fixed_argv(monkeypatch, tmp_path: Path):
+def test_mutations_use_fixed_argv_and_verify_observed_state(monkeypatch, tmp_path: Path):
     backend = _backend(tmp_path)
     calls = []
-    monkeypatch.setattr(backend, "_sv", lambda d, action: calls.append((d.name, action)) or type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})())
-    monkeypatch.setattr(backend, "get_status", lambda name: type("I", (), {"name": name, "state": ServiceState.RUNNING})())
+    observed = {"state": ServiceState.STOPPED}
+
+    def fake_sv(definition, action):
+        calls.append((definition.name, action))
+        observed["state"] = {
+            "up": ServiceState.RUNNING,
+            "down": ServiceState.STOPPED,
+            "restart": ServiceState.RUNNING,
+        }[action]
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(backend, "_sv", fake_sv)
+    monkeypatch.setattr(
+        backend,
+        "get_status",
+        lambda name: type("I", (), {"name": name, "state": observed["state"]})(),
+    )
     backend.start("demo")
     backend.stop("demo")
     backend.restart("demo")

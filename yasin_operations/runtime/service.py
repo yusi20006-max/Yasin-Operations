@@ -1,9 +1,7 @@
-"""Service abstraction.
+"""Typed runtime service lifecycle contracts.
 
-Represents a named service without hard-coding any specific product
-(YasinPress, YasinRelay, Hermes, Yasin-AI, systemd units, etc.).
-Lifecycle mutations are typed and must go through an adapter that
-only runs predefined, validated actions.
+Service state is observed state. Lifecycle mutations are successful only when
+the requested resulting state can be observed by the backend.
 """
 
 from __future__ import annotations
@@ -14,8 +12,6 @@ from typing import Mapping, Optional, Protocol, runtime_checkable
 
 
 class ServiceState(str, Enum):
-    """Observed or desired service state."""
-
     UNKNOWN = "unknown"
     STOPPED = "stopped"
     STARTING = "starting"
@@ -34,7 +30,7 @@ class ServiceNotFoundError(Exception):
 
 
 class ServiceCommandError(Exception):
-    """Raised when a predefined service lifecycle command fails."""
+    """Raised when a predefined lifecycle command fails or is not verified."""
 
     def __init__(self, name: str, action: str, returncode: int, message: str = ""):
         self.name = name
@@ -45,9 +41,30 @@ class ServiceCommandError(Exception):
         super().__init__(f"Service {action} failed for {name!r}: {detail}")
 
 
+class ServiceTimeoutError(ServiceCommandError, TimeoutError):
+    """Raised when a lifecycle command or readiness wait exceeds its budget."""
+
+    def __init__(self, name: str, action: str, message: str = ""):
+        super().__init__(name, action, -1, message or "lifecycle operation timed out")
+
+
+class ServiceReadinessError(ServiceCommandError):
+    """Raised when a control command succeeds but requested state is not observed."""
+
+    def __init__(self, name: str, action: str, expected: ServiceState, observed: ServiceState):
+        self.expected = expected
+        self.observed = observed
+        super().__init__(
+            name,
+            action,
+            0,
+            f"expected state {expected.value!r}, observed {observed.value!r}",
+        )
+
+
 @dataclass(frozen=True)
 class ServiceInfo:
-    """Structured description of a service."""
+    """Structured description of observed and desired service state."""
 
     name: str
     state: ServiceState
@@ -61,30 +78,19 @@ class ServiceInfo:
 
 @runtime_checkable
 class ServiceBackend(Protocol):
-    """Backend contract for service inspection and lifecycle.
-
-    START/STOP/RESTART are mutating; STATUS is read-only.
-    Implementations must not accept arbitrary user-supplied command
-    strings — only predefined actions associated with registered
-    service definitions.
-    """
+    """Backend contract for service inspection and predefined lifecycle actions."""
 
     def list_services(self) -> list[ServiceInfo]:
         ...
 
     def get_status(self, name: str) -> ServiceInfo:
-        """Return current status, or raise ServiceNotFoundError."""
         ...
 
     def start(self, name: str) -> ServiceInfo:
-        """Attempt to start the service. Returns resulting ServiceInfo.
-        Raises ServiceNotFoundError if unknown."""
         ...
 
     def stop(self, name: str) -> ServiceInfo:
-        """Attempt to stop the service."""
         ...
 
     def restart(self, name: str) -> ServiceInfo:
-        """Attempt to restart the service."""
         ...
