@@ -17,10 +17,17 @@ DEFAULT_RECENT_REQUEST_IDS = 1024
 
 
 def _validate_identifier(name: str, value: str, maximum: int = DEFAULT_MAX_IDENTIFIER_LENGTH) -> None:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a string")
     if not value or len(value) > maximum:
         raise ValueError(f"{name} must be 1..{maximum} characters")
     if any(ord(char) < 32 or ord(char) == 127 for char in value):
         raise ValueError(f"{name} must not contain control characters")
+
+
+def _validate_schema_version(value: object) -> None:
+    if type(value) is not int or value != GATEWAY_SCHEMA_VERSION:
+        raise ValueError("unsupported schema_version")
 
 
 @dataclass(frozen=True)
@@ -42,7 +49,12 @@ class GatewayResponse:
 
 
 class JsonlGateway:
-    """Serve validated operations over stdin/stdout JSONL."""
+    """Serve validated operations over stdin/stdout JSONL.
+
+    The gateway is a trust boundary: transport metadata is validated before
+    the adapter is called, and unexpected internal exceptions are converted to
+    a stable generic error rather than exposing exception text to clients.
+    """
 
     def __init__(
         self,
@@ -95,14 +107,20 @@ class JsonlGateway:
             payload = json.loads(line)
             if not isinstance(payload, Mapping):
                 raise ValueError("request envelope must be a JSON object")
-            if payload.get("schema_version", GATEWAY_SCHEMA_VERSION) != GATEWAY_SCHEMA_VERSION:
-                raise ValueError("unsupported schema_version")
-            if payload.get("request_id") is not None:
-                request_id = str(payload["request_id"])
+            _validate_schema_version(payload.get("schema_version", GATEWAY_SCHEMA_VERSION))
+
+            envelope_request_id = payload.get("request_id")
+            if envelope_request_id is not None:
+                _validate_identifier("request_id", envelope_request_id, self._max_identifier_length)
+                request_id = envelope_request_id
+
             request_payload = payload.get("request", payload)
             if not isinstance(request_payload, Mapping):
                 raise ValueError("request must be a JSON object")
             request = HermesOperationRequest.from_mapping(request_payload)
+            if envelope_request_id is not None and request.request_id != envelope_request_id:
+                raise ValueError("envelope request_id does not match request request_id")
+
             request_id = request.request_id
             _validate_identifier("request_id", request.request_id, self._max_identifier_length)
             _validate_identifier("actor", request.actor, self._max_identifier_length)
@@ -112,9 +130,13 @@ class JsonlGateway:
             _validate_identifier("target_identifier", request.target_identifier, self._max_identifier_length)
             if request.correlation_id is not None:
                 _validate_identifier("correlation_id", request.correlation_id, self._max_identifier_length)
-            parameter_bytes = len(json.dumps(request.parameters, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+            parameter_bytes = len(
+                json.dumps(request.parameters, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            )
             if parameter_bytes > self._max_parameter_bytes:
                 raise ValueError("parameters exceed maximum size")
+
             self._remember_request_id(request.request_id)
             response = self._adapter.handle(request)
         except json.JSONDecodeError as exc:
@@ -135,13 +157,17 @@ class JsonlGateway:
                 error={"category": "validation_error", "message": str(exc), "details": {}},
                 service_available=self._adapter.available,
             )
-        except Exception as exc:  # noqa: BLE001 - boundary must stay alive
+        except Exception:  # noqa: BLE001 - trust boundary must stay alive without leaking internals
             response = HermesOperationResponse(
                 request_id=request_id,
                 operation_id=None,
                 success=False,
                 status="failed",
-                error={"category": "internal_error", "message": str(exc), "details": {}},
+                error={
+                    "category": "internal_error",
+                    "message": "internal gateway error",
+                    "details": {},
+                },
                 service_available=self._adapter.available,
             )
         return GatewayResponse(GATEWAY_SCHEMA_VERSION, response).as_dict()
