@@ -36,9 +36,20 @@ Validation does not authorize operations. After validation, every operation cont
 
 External boundaries return stable categories and generic messages for unexpected internal failures. Validation errors may identify the invalid public field, but internal exception text, filesystem paths, credentials, stack traces, and dependency details must not be exposed to untrusted clients.
 
-## Limits and replay behavior
+## Idempotency, replay, and request lifecycle
 
-The local JSONL gateway enforces bounded line and parameter sizes and maintains a bounded recent request-ID set. Duplicate behavior is deterministic within that configured window. This is a bounded duplicate guard, not a durable distributed idempotency store; process restart can reset the window.
+The local JSONL gateway uses a bounded in-memory request ledger keyed by `request_id` and a SHA-256 fingerprint of execution-relevant fields.
+
+- **Read-only request:** a repeated request with the same ID and identical fingerprint replays the cached response without invoking the tool again.
+- **Mutating request:** a repeated request ID is rejected, even when the fingerprint is identical. This gives at-most-once behavior within the active ledger window rather than risking a second mutation.
+- **Conflicting reuse:** reusing an ID for a different request is rejected.
+- **Concurrent reuse:** an ID already executing is rejected until the first request completes.
+- **Eviction:** the ledger is bounded. Once an ID leaves the configured window, the gateway no longer has local evidence that it was previously executed.
+- **Restart:** the ledger is process-local and is lost on restart. It is not a durable distributed idempotency store.
+
+Callers requiring durable exactly-once or cross-process deduplication must use a persistent idempotency mechanism outside this local gateway contract.
+
+`correlation_id` is a tracing/audit correlation value; it is not itself an idempotency key and does not authorize execution.
 
 ## Non-goals
 
