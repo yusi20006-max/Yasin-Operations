@@ -73,7 +73,7 @@ class HermesOperationsAdapter:
                 dry_run=normalized.dry_run,
                 correlation_id=normalized.correlation_id,
             )
-        except (ConnectionError, TimeoutError) as exc:
+        except (ConnectionError, TimeoutError):
             return HermesOperationResponse(
                 request_id=normalized.request_id,
                 operation_id=operation.id,
@@ -81,12 +81,12 @@ class HermesOperationsAdapter:
                 status="unavailable",
                 error={
                     "category": ErrorCategory.UNAVAILABLE_DEPENDENCY.value,
-                    "message": str(exc) or "Yasin-Operations runtime is unavailable",
+                    "message": "Yasin-Operations runtime dependency is unavailable",
                     "details": {},
                 },
                 service_available=False,
             )
-        except Exception as exc:  # noqa: BLE001 - interface boundary must stay structured
+        except Exception:  # noqa: BLE001 - interface boundary must stay structured
             return HermesOperationResponse(
                 request_id=normalized.request_id,
                 operation_id=operation.id,
@@ -94,7 +94,7 @@ class HermesOperationsAdapter:
                 status="failed",
                 error={
                     "category": ErrorCategory.INTERNAL_ERROR.value,
-                    "message": str(exc),
+                    "message": "operation failed due to an internal error",
                     "details": {},
                 },
                 service_available=True,
@@ -152,5 +152,7 @@ class HermesOperationsAdapter:
     def _request_id(request: HermesOperationRequest | Mapping[str, Any]) -> str:
         if isinstance(request, HermesOperationRequest):
             return request.request_id
+        if not isinstance(request, Mapping):
+            return "unknown"
         value = request.get("request_id")
-        return str(value) if value is not None else "unknown"
+        return value if isinstance(value, str) else "unknown"
