@@ -1,41 +1,31 @@
-"""Local service backend.
+"""Local service backend with deterministic lifecycle verification.
 
-Services are registered via ServiceDefinition with predefined
-start/stop argument lists. The backend never accepts arbitrary
-user-supplied command strings — only the fixed argv sequences
-associated with each definition.
-
-Does not assume systemd, Docker, or any particular init system.
-Suitable as a minimal Termux/Linux adapter; future backends can
-implement the same ServiceBackend protocol for runit/systemd/etc.
+Services are registered through fixed argv definitions. Lifecycle commands never
+accept arbitrary shell strings, and a control command is not considered
+successful until the requested observed state is reached.
 """
-
 from __future__ import annotations
 
+import os
 import signal
 import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Sequence
 
-from yasin_operations.runtime.process import ProcessInspector, ProcessNotFoundError
+from yasin_operations.runtime.process import ProcessInspector
 from yasin_operations.runtime.service import (
     ServiceBackend,
-    ServiceInfo,
+    ServiceCommandError,
     ServiceNotFoundError,
+    ServiceReadinessError,
     ServiceState,
+    ServiceTimeoutError,
 )
 
 
 @dataclass(frozen=True)
 class ServiceDefinition:
-    """Pre-declared service with fixed, validated action commands.
-
-    start_argv / stop_argv are argument lists (no shell).
-    process_pattern is used to locate the running process by name/cmdline
-    when PID is not tracked.
-    """
-
     name: str
     process_pattern: str = ""
     start_argv: Optional[Sequence[str]] = None
@@ -47,30 +37,36 @@ class ServiceDefinition:
     def __post_init__(self) -> None:
         if not self.name or not self.name.strip():
             raise ValueError("ServiceDefinition.name must not be empty")
-        if self.start_argv is not None:
-            if not all(isinstance(a, str) for a in self.start_argv):
-                raise ValueError("start_argv must be a sequence of strings")
-        if self.stop_argv is not None:
-            if not all(isinstance(a, str) for a in self.stop_argv):
-                raise ValueError("stop_argv must be a sequence of strings")
+        if self.start_argv is not None and not all(isinstance(a, str) for a in self.start_argv):
+            raise ValueError("start_argv must be a sequence of strings")
+        if self.stop_argv is not None and not all(isinstance(a, str) for a in self.stop_argv):
+            raise ValueError("stop_argv must be a sequence of strings")
+        if not isinstance(self.stop_signal, int):
+            raise ValueError("stop_signal must be an integer signal")
 
 
 class LocalServiceBackend:
-    """In-process registry of ServiceDefinitions + process inspection."""
+    """In-process registry with bounded readiness and shutdown verification."""
 
     def __init__(
         self,
         inspector: ProcessInspector,
         definitions: Optional[Sequence[ServiceDefinition]] = None,
         command_timeout_seconds: float = 15.0,
+        startup_grace_seconds: float = 2.0,
+        poll_interval_seconds: float = 0.05,
     ) -> None:
+        if command_timeout_seconds <= 0 or startup_grace_seconds < 0 or poll_interval_seconds <= 0:
+            raise ValueError("invalid service lifecycle timing configuration")
         self._inspector = inspector
         self._defs: dict[str, ServiceDefinition] = {}
         self._timeout = command_timeout_seconds
+        self._startup_grace = startup_grace_seconds
+        self._poll_interval = poll_interval_seconds
         self._tracked_pids: dict[str, int] = {}
         if definitions:
-            for d in definitions:
-                self.register(d)
+            for definition in definitions:
+                self.register(definition)
 
     def register(self, definition: ServiceDefinition) -> None:
         self._defs[definition.name] = definition
@@ -79,10 +75,30 @@ class LocalServiceBackend:
         self._defs.pop(name, None)
         self._tracked_pids.pop(name, None)
 
-    def list_services(self) -> list[ServiceInfo]:
-        return [self.get_status(name) for name in sorted(self._defs)]
+    def list_services(self) -> list:
+        results = []
+        for name in sorted(self._defs):
+            try:
+                results.append(self.get_status(name))
+            except Exception as exc:  # noqa: BLE001 - isolate one broken service
+                definition = self._defs[name]
+                from yasin_operations.runtime.service import ServiceInfo
 
-    def get_status(self, name: str) -> ServiceInfo:
+                results.append(
+                    ServiceInfo(
+                        name=name,
+                        state=ServiceState.FAILED,
+                        desired_state=definition.desired_state,
+                        health_state="failed",
+                        message=str(exc)[:200],
+                        extra={"adapter": "local", "error": type(exc).__name__},
+                    )
+                )
+        return results
+
+    def get_status(self, name: str):
+        from yasin_operations.runtime.service import ServiceInfo
+
         definition = self._require(name)
         pid = self._resolve_pid(definition)
         if pid is not None and self._inspector.is_alive(pid):
@@ -91,22 +107,25 @@ class LocalServiceBackend:
                 state=ServiceState.RUNNING,
                 pid=pid,
                 desired_state=definition.desired_state,
-                health_state="ok",
+                health_state="ok" if definition.desired_state is ServiceState.RUNNING else "degraded",
                 message="process is alive",
+                extra=dict(definition.extra),
             )
+        health = "ok" if definition.desired_state is ServiceState.STOPPED else "stopped"
         return ServiceInfo(
             name=name,
             state=ServiceState.STOPPED,
             pid=None,
             desired_state=definition.desired_state,
-            health_state="stopped",
+            health_state=health,
             message="no matching live process",
+            extra=dict(definition.extra),
         )
 
-    def start(self, name: str) -> ServiceInfo:
+    def start(self, name: str):
         definition = self._require(name)
         current = self.get_status(name)
-        if current.state == ServiceState.RUNNING:
+        if current.state is ServiceState.RUNNING:
             return current
         if definition.start_argv is None:
             from yasin_operations.runtime.local._errors import ActionNotConfiguredError
@@ -128,13 +147,12 @@ class LocalServiceBackend:
 
             raise BackendExecutionError(name, f"start failed: {exc}") from exc
         self._tracked_pids[name] = proc.pid
-        time.sleep(0.05)
-        return self.get_status(name)
+        return self._wait_for_state(name, "start", ServiceState.RUNNING)
 
-    def stop(self, name: str) -> ServiceInfo:
+    def stop(self, name: str):
         definition = self._require(name)
         current = self.get_status(name)
-        if current.state == ServiceState.STOPPED:
+        if current.state is ServiceState.STOPPED:
             return current
         if definition.stop_argv is not None:
             try:
@@ -150,13 +168,10 @@ class LocalServiceBackend:
 
                     raise BackendExecutionError(
                         name,
-                        f"stop command exited {completed.returncode}: "
-                        f"{(completed.stderr or completed.stdout or '').strip()[:200]}",
+                        f"stop command exited {completed.returncode}: {(completed.stderr or completed.stdout or '').strip()[:200]}",
                     )
             except subprocess.TimeoutExpired as exc:
-                from yasin_operations.runtime.local._errors import BackendTimeoutError
-
-                raise BackendTimeoutError(name, "stop") from exc
+                raise ServiceTimeoutError(name, "stop", "stop command timed out") from exc
             except FileNotFoundError as exc:
                 from yasin_operations.runtime.local._errors import BackendExecutionError
 
@@ -164,10 +179,9 @@ class LocalServiceBackend:
         else:
             pid = current.pid or self._tracked_pids.get(name)
             if pid is None:
-                return current
+                raise ServiceReadinessError(name, "stop", ServiceState.STOPPED, current.state)
             try:
-                os_kill = __import__("os").kill
-                os_kill(pid, definition.stop_signal)
+                os.kill(pid, definition.stop_signal)
             except ProcessLookupError:
                 pass
             except PermissionError as exc:
@@ -178,13 +192,30 @@ class LocalServiceBackend:
                 from yasin_operations.runtime.local._errors import BackendExecutionError
 
                 raise BackendExecutionError(name, f"stop signal failed: {exc}") from exc
-        self._tracked_pids.pop(name, None)
-        time.sleep(0.05)
-        return self.get_status(name)
+        return self._wait_for_state(name, "stop", ServiceState.STOPPED)
 
-    def restart(self, name: str) -> ServiceInfo:
+    def restart(self, name: str):
         self.stop(name)
         return self.start(name)
+
+    def _wait_for_state(self, name: str, action: str, expected: ServiceState):
+        deadline = time.monotonic() + self._timeout + self._startup_grace
+        last = self.get_status(name)
+        while time.monotonic() < deadline:
+            if last.state is expected:
+                if expected is ServiceState.STOPPED:
+                    self._tracked_pids.pop(name, None)
+                return last
+            tracked = self._tracked_pids.get(name)
+            if action == "start" and tracked is not None and not self._inspector.is_alive(tracked):
+                raise ServiceReadinessError(name, action, expected, ServiceState.FAILED)
+            time.sleep(self._poll_interval)
+            last = self.get_status(name)
+        raise ServiceTimeoutError(
+            name,
+            action,
+            f"timed out waiting for {expected.value!r}; observed {last.state.value!r}",
+        )
 
     def _require(self, name: str) -> ServiceDefinition:
         if name not in self._defs:
