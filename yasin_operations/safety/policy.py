@@ -1,7 +1,7 @@
 """Policy enforcement for operational safety.
 
-The policy is deliberately deny-by-default for mutating work.  It does
-not execute anything and contains no shell or platform-specific logic.
+The policy is deliberately deny-by-default for mutating work. It does not
+execute anything and contains no shell or platform-specific logic.
 """
 from __future__ import annotations
 
@@ -34,10 +34,10 @@ class PolicyDecision:
 class SafetyPolicy:
     """Explicit authorization and execution-safety policy.
 
-    READ_ONLY operations are allowed without confirmation.  MUTATING
+    READ_ONLY operations are allowed without confirmation. MUTATING
     operations require confirmation unless their operation name is in
-    ``auto_approved_mutations``.  Protected targets are denied by
-    default and can only be changed when the operation name is also in
+    ``auto_approved_mutations``. Protected targets are denied by default and
+    can only be changed when the operation name is also in
     ``protected_mutation_allowlist`` and explicit confirmation is given.
     """
 
@@ -50,10 +50,19 @@ class SafetyPolicy:
     timeout_seconds: float = 30.0
 
     def __post_init__(self) -> None:
+        if not isinstance(self.require_confirmation_for_mutations, bool):
+            raise ValueError("require_confirmation_for_mutations must be a boolean")
         if self.max_read_only_attempts < 1 or self.max_mutating_attempts < 1:
             raise ValueError("attempt limits must be at least 1")
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        for name, values in (
+            ("protected_targets", self.protected_targets),
+            ("auto_approved_mutations", self.auto_approved_mutations),
+            ("protected_mutation_allowlist", self.protected_mutation_allowlist),
+        ):
+            if not isinstance(values, frozenset):
+                raise ValueError(f"{name} must be a frozenset")
 
     @classmethod
     def with_protected_targets(
@@ -68,6 +77,11 @@ class SafetyPolicy:
         confirmation: bool = False,
         dry_run: bool = False,
     ) -> PolicyDecision:
+        if not isinstance(confirmation, bool):
+            raise ValueError("confirmation must be a boolean")
+        if not isinstance(dry_run, bool):
+            raise ValueError("dry_run must be a boolean")
+
         attempts = (
             self.max_read_only_attempts
             if operation.safety_class is SafetyClass.READ_ONLY
