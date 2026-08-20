@@ -103,11 +103,9 @@ One terminology rule is retained: the Hermes adapter is an optional interface bo
 
 ## 6. YASIN-DOCS reconciliation
 
-The ecosystem-level ADR for Yasin-Operations remains correct on the major boundary decision: independent deployment, no mandatory cross-repository dependency, Yasin-AI as canonical AI platform, YasinPress/YasinRelay ownership boundaries, and Hermes as optional integration direction.
+YASIN-DOCS has now been reconciled with the P3.1 result. The human-readable registry and YAML registry both promote Yasin-Operations to active/verified architecture status while preserving empty `depends_on` and `consumers`. ADR-0012 has been updated to reflect the final boundary, the optional Hermes-facing adapter, and the absence of any mandatory cross-repository dependency.
 
-The registry entry is stale because it still labels Yasin-Operations as `newly-registered` / `provisional`. Final reconciliation must promote the repository's status to an active/verified documented project while preserving empty `depends_on` and `consumers` unless source evidence establishes a relationship.
-
-That registry/ADR metadata reconciliation is a documentation-state update, not an implementation dependency change.
+The central documentation update was merged as YASIN-DOCS PR #32 (`18523191656d0523412717184e8c63a51b434ada`).
 
 ## 7. Final gate matrix
 
@@ -125,8 +123,8 @@ That registry/ADR metadata reconciliation is a documentation-state update, not a
 | Live Termux/runit acceptance | PENDING | Requires target host |
 | JSONL gateway boundary | PASS | Source + gateway tests |
 | MCP implementation | NOT APPLICABLE | Explicitly not implemented in v0.1.0 |
-| YASIN-DOCS registry reconciliation | PENDING | Requires central-doc update |
+| YASIN-DOCS reconciliation | PASS | YASIN-DOCS PR #32 merged |
 
 ## Closure rule
 
-Issue #132 must be closed only after the PENDING evidence gates are either executed successfully or explicitly accepted as non-applicable by the release owner, and after YASIN-DOCS registry state is reconciled. No Critical/High implementation finding currently blocks closure.
+Issue #132 must be closed only after the remaining evidence gates are either executed successfully or explicitly accepted as non-applicable by the release owner. No Critical/High implementation finding currently blocks closure.
