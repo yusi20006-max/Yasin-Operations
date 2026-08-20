@@ -9,6 +9,7 @@ from scripts.production_acceptance import (
     FakeProbe,
     _runit_state,
     check_ecosystem_adapters,
+    check_gateway_process,
     check_hermes,
 )
 
@@ -38,6 +39,12 @@ def test_ecosystem_acceptance_checks_inject_probes():
     results = check_ecosystem_adapters()
     assert len(results) == 3
     assert all(result.status == "PASS" for result in results)
+
+
+def test_gateway_process_acceptance_checks_are_credential_free():
+    results = check_gateway_process()
+    assert len(results) == 3
+    assert all(result.status == "PASS" for result in results), results
 
 
 def test_acceptance_cli_emits_successful_json_envelope():
