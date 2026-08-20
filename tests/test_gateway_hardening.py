@@ -23,6 +23,12 @@ class FakeExecutor:
         return FakeResult()
 
 
+class ExplodingExecutor(FakeExecutor):
+    def execute(self, operation, **kwargs):
+        self.calls += 1
+        raise RuntimeError("secret internal path and credential-like detail")
+
+
 def request(request_id="req-1", **extra):
     payload = {
         "schema_version": 1,
@@ -96,3 +102,64 @@ def test_duplicate_rejection_can_be_disabled():
     assert gateway.handle_line(request(request_id="same"))["success"] is True
     assert gateway.handle_line(request(request_id="same"))["success"] is True
     assert executor.calls == 2
+
+
+def test_boolean_fields_reject_string_coercion():
+    executor = FakeExecutor()
+    gateway = JsonlGateway(HermesOperationsAdapter(executor))
+    response = gateway.handle_line(request(confirmation="false"))
+    assert response["status"] == "invalid_request"
+    assert executor.calls == 0
+
+
+def test_safety_class_rejects_non_string_values():
+    executor = FakeExecutor()
+    gateway = JsonlGateway(HermesOperationsAdapter(executor))
+    response = gateway.handle_line(request(safety_class=True))
+    assert response["status"] == "invalid_request"
+    assert executor.calls == 0
+
+
+def test_parameters_reject_non_object_values():
+    executor = FakeExecutor()
+    gateway = JsonlGateway(HermesOperationsAdapter(executor))
+    response = gateway.handle_line(request(parameters=["unexpected", "list"]))
+    assert response["status"] == "invalid_request"
+    assert executor.calls == 0
+
+
+def test_unknown_fields_are_rejected():
+    executor = FakeExecutor()
+    gateway = JsonlGateway(HermesOperationsAdapter(executor))
+    response = gateway.handle_line(request(unexpected="value"))
+    assert response["status"] == "invalid_request"
+    assert executor.calls == 0
+
+
+def test_envelope_and_request_ids_must_match():
+    executor = FakeExecutor()
+    gateway = JsonlGateway(HermesOperationsAdapter(executor))
+    payload = json.loads(request(request_id="inner"))
+    payload["request_id"] = "outer"
+    response = gateway.handle_line(json.dumps(payload))
+    assert response["status"] == "invalid_request"
+    assert executor.calls == 0
+
+
+def test_schema_version_rejects_boolean_coercion():
+    executor = FakeExecutor()
+    gateway = JsonlGateway(HermesOperationsAdapter(executor))
+    payload = json.loads(request())
+    payload["schema_version"] = True
+    response = gateway.handle_line(json.dumps(payload))
+    assert response["status"] == "invalid_request"
+    assert executor.calls == 0
+
+
+def test_internal_executor_errors_are_not_disclosed():
+    gateway = JsonlGateway(HermesOperationsAdapter(ExplodingExecutor()))
+    response = gateway.handle_line(request())
+    assert response["status"] == "failed"
+    assert response["error"]["category"] == "internal_error"
+    assert response["error"]["message"] == "operation failed due to an internal error"
+    assert "secret internal path" not in json.dumps(response)
