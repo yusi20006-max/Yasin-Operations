@@ -1,12 +1,4 @@
-"""Tool contract.
-
-A Tool declares what operation names it supports and how to execute
-them, without the Core needing to know its implementation details
-(shell, HTTP call, in-process Python, etc). Concrete tools live in
-adapters/ in later issues; this module only defines the contract
-they must satisfy.
-"""
-
+"""Tool capability and execution contracts."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -19,27 +11,31 @@ from yasin_operations.safety.classification import SafetyClass
 
 @dataclass(frozen=True)
 class ToolCapability:
-    """One operation name a tool supports, and its safety class.
+    """One operation capability plus explicit retry/idempotency semantics.
 
-    The safety_class here is authoritative for what the tool
-    declares it does; it is compared against the Operation's own
-    safety_class by the execution layer (see execution/executor.py)
-    to catch a mismatch rather than trusting the caller blindly.
+    `retryable` means the tool can safely be invoked again after a retryable
+    failure. For mutating operations, `idempotent` is additionally required;
+    the executor never assumes mutation idempotency from the operation name.
     """
 
     operation_name: str
     safety_class: SafetyClass
+    retryable: bool = False
+    idempotent: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.operation_name or not self.operation_name.strip():
+            raise ValueError("ToolCapability.operation_name must not be empty")
+        if not isinstance(self.safety_class, SafetyClass):
+            raise ValueError("ToolCapability.safety_class must be a SafetyClass member")
+        if not isinstance(self.retryable, bool) or not isinstance(self.idempotent, bool):
+            raise ValueError("retryable and idempotent must be booleans")
+        if self.idempotent and not self.retryable:
+            raise ValueError("idempotent capability must also be retryable")
 
 
 @dataclass(frozen=True)
 class ToolDescriptor:
-    """Static identity/description metadata for a tool.
-
-    Kept separate from the executable Tool protocol below so a
-    registry can list/describe tools without needing a live
-    instance of every tool.
-    """
-
     id: str
     description: str
     capabilities: tuple[ToolCapability, ...] = field(default_factory=tuple)
@@ -62,25 +58,9 @@ class ToolDescriptor:
 
 @runtime_checkable
 class Tool(Protocol):
-    """Protocol a concrete tool implementation must satisfy.
-
-    Using a Protocol (structural typing) rather than an ABC keeps
-    the Core decoupled from any specific tool base class; adapters
-    in later issues can implement this without importing a Core
-    base class.
-    """
-
     @property
     def descriptor(self) -> ToolDescriptor:
-        """Static identity/description/capability metadata."""
         ...
 
     def execute(self, operation: Operation) -> OperationResult:
-        """Execute the given operation and return a structured result.
-
-        Implementations must not raise for expected failure modes;
-        they should return OperationResult.fail(...) with an
-        appropriate OperationError instead. Unexpected exceptions
-        are the execution layer's responsibility to catch and wrap.
-        """
         ...
