@@ -56,13 +56,6 @@ class SafetyPolicy:
             raise ValueError("attempt limits must be at least 1")
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
-        for name, values in (
-            ("protected_targets", self.protected_targets),
-            ("auto_approved_mutations", self.auto_approved_mutations),
-            ("protected_mutation_allowlist", self.protected_mutation_allowlist),
-        ):
-            if not isinstance(values, frozenset):
-                raise ValueError(f"{name} must be a frozenset")
 
     @classmethod
     def with_protected_targets(
