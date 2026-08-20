@@ -61,7 +61,7 @@ def test_jsonl_schema_version_is_rejected_before_execution() -> None:
     assert executor.calls == []
 
 
-def test_jsonl_boundary_keeps_recent_request_replay_protection() -> None:
+def test_jsonl_boundary_replays_recent_read_only_request_without_reexecution() -> None:
     executor = FakeExecutor()
     gateway = JsonlGateway(HermesOperationsAdapter(executor), recent_request_ids=2)
 
@@ -69,9 +69,7 @@ def test_jsonl_boundary_keeps_recent_request_replay_protection() -> None:
     second = gateway.handle_line(_request(request_id="replay-1"))
 
     assert first["success"] is True
-    assert second["success"] is False
-    assert second["status"] == "invalid_request"
-    assert second["error"]["category"] == "validation_error"
+    assert second == first
     assert len(executor.calls) == 1
 
 
