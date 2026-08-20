@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 
 from yasin_operations.adapters.hermes.adapter import HermesOperationsAdapter
 from yasin_operations.gateway import JsonlGateway
@@ -20,6 +21,19 @@ class FakeExecutor:
 
     def execute(self, operation, **kwargs):
         self.calls += 1
+        return FakeResult()
+
+
+class BlockingExecutor(FakeExecutor):
+    def __init__(self):
+        super().__init__()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def execute(self, operation, **kwargs):
+        self.calls += 1
+        self.entered.set()
+        self.release.wait(timeout=2)
         return FakeResult()
 
 
@@ -76,18 +90,47 @@ def test_identifier_length_is_enforced():
     assert executor.calls == 0
 
 
-def test_duplicate_request_id_is_deterministic():
+def test_read_only_duplicate_replays_cached_response():
     executor = FakeExecutor()
     gateway = JsonlGateway(HermesOperationsAdapter(executor), recent_request_ids=8)
     first = gateway.handle_line(request(request_id="same"))
     second = gateway.handle_line(request(request_id="same"))
     assert first["success"] is True
-    assert second["status"] == "invalid_request"
-    assert "duplicate" in second["error"]["message"]
+    assert second == first
     assert executor.calls == 1
 
 
-def test_duplicate_detection_window_evicts_old_ids():
+def test_mutating_duplicate_is_rejected_even_with_same_fingerprint():
+    executor = FakeExecutor()
+    gateway = JsonlGateway(HermesOperationsAdapter(executor), recent_request_ids=8)
+    payload = request(
+        request_id="same-mutation",
+        operation="restart",
+        target_kind="service",
+        target_identifier="demo",
+        safety_class="mutating",
+        confirmation=True,
+    )
+    first = gateway.handle_line(payload)
+    second = gateway.handle_line(payload)
+    assert first["success"] is True
+    assert second["status"] == "invalid_request"
+    assert "duplicate request_id" in second["error"]["message"]
+    assert executor.calls == 1
+
+
+def test_request_id_reuse_with_different_payload_is_rejected():
+    executor = FakeExecutor()
+    gateway = JsonlGateway(HermesOperationsAdapter(executor), recent_request_ids=8)
+    first = gateway.handle_line(request(request_id="same", target_identifier="runtime"))
+    second = gateway.handle_line(request(request_id="same", target_identifier="other"))
+    assert first["success"] is True
+    assert second["status"] == "invalid_request"
+    assert "different request" in second["error"]["message"]
+    assert executor.calls == 1
+
+
+def test_duplicate_detection_window_evicts_old_read_only_ids():
     executor = FakeExecutor()
     gateway = JsonlGateway(HermesOperationsAdapter(executor), recent_request_ids=1)
     assert gateway.handle_line(request(request_id="a"))["success"] is True
@@ -102,6 +145,28 @@ def test_duplicate_rejection_can_be_disabled():
     assert gateway.handle_line(request(request_id="same"))["success"] is True
     assert gateway.handle_line(request(request_id="same"))["success"] is True
     assert executor.calls == 2
+
+
+def test_concurrent_duplicate_is_rejected_while_request_is_in_flight():
+    executor = BlockingExecutor()
+    gateway = JsonlGateway(HermesOperationsAdapter(executor), recent_request_ids=8)
+    first_response: list[dict] = []
+
+    def run_first():
+        first_response.append(gateway.handle_line(request(request_id="concurrent")))
+
+    thread = threading.Thread(target=run_first)
+    thread.start()
+    assert executor.entered.wait(timeout=2)
+
+    second = gateway.handle_line(request(request_id="concurrent"))
+    assert second["status"] == "invalid_request"
+    assert "already in progress" in second["error"]["message"]
+
+    executor.release.set()
+    thread.join(timeout=2)
+    assert first_response[0]["success"] is True
+    assert executor.calls == 1
 
 
 def test_boolean_fields_reject_string_coercion():
