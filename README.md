@@ -78,6 +78,10 @@ The gateway is intentionally local and optional. Existing CLI commands,
 runtime services, and the repository's standalone operation remain
 unchanged when it is not used.
 
+The JSONL gateway is **not an MCP server**. No MCP implementation is
+currently part of Yasin-Operations; MCP integration, if later required,
+must be tracked as a separate architectural/integration decision.
+
 ## Termux / runit
 
 The optional always-on service definition is under
@@ -136,6 +140,8 @@ installs, and verifies release artifacts.
 See `docs/OPERATIONS-RUNBOOK.md` for the production/operator workflow.
 See `docs/RELEASE_READINESS_v0.1.0.md` for the release evidence record.
 See `docs/RELEASE_PROCESS.md` for the canonical release procedure.
+See `docs/ARCHITECTURE-RECONCILIATION.md` for the cross-project
+architecture and status reconciliation.
 
 ## Status
 
@@ -146,6 +152,11 @@ authoritative runit state normalization, adapter contracts, the
 production acceptance harness, release readiness, and CI acceptance
 gating.
 
-Yasin-Operations `v0.1.0` is release-ready as an optional standalone
-Operations authority. It does not require any target Yasin repository
-for core operation.
+Yasin-Operations `v0.1.0` has repository-local release evidence and is
+intended to remain an optional standalone Operations authority. This
+repository-local readiness statement is **not** an ecosystem-wide
+architecture certification. YASIN-DOCS currently records
+Yasin-Operations as a newly registered, provisional project until
+cross-project architecture verification is explicitly promoted there.
+
+It does not require any target Yasin repository for core operation.
