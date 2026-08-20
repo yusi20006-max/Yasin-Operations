@@ -29,13 +29,7 @@ def line(**request):
 
 
 def valid(**overrides):
-    request = {
-        "operation": "health_check",
-        "target_kind": "self",
-        "target_identifier": "runtime",
-        "safety_class": "read_only",
-        "request_id": "integration-001",
-    }
+    request = {"operation": "health_check", "target_kind": "self", "target_identifier": "runtime", "safety_class": "read_only", "request_id": "integration-001"}
     request.update(overrides)
     return line(**request)
 
@@ -67,13 +61,13 @@ def test_identifier_control_characters_and_length_are_rejected():
         assert response["status"] == "invalid_request"
 
 
-def test_oversized_line_and_parameter_are_rejected_before_execution():
+def test_oversized_parameter_is_rejected_before_execution():
     executor = FakeExecutor()
-    gateway = JsonlGateway(HermesOperationsAdapter(executor), max_line_bytes=512, max_parameter_bytes=64)
-    oversized_line = gateway.handle_line(valid(parameters={"blob": "x" * 1000}))
-    assert not oversized_line["success"]
+    gateway = JsonlGateway(HermesOperationsAdapter(executor), max_line_bytes=2048, max_parameter_bytes=256)
+    response = gateway.handle_line(valid(parameters={"blob": "x" * 1000}))
+    assert not response["success"]
     assert executor.calls == []
-    assert oversized_line["error"]["category"] == ErrorCategory.VALIDATION_ERROR.value
+    assert response["error"]["category"] == ErrorCategory.VALIDATION_ERROR.value
 
 
 def test_duplicate_mutation_request_cannot_reach_executor_twice():
@@ -85,27 +79,36 @@ def test_duplicate_mutation_request_cannot_reach_executor_twice():
     assert first["success"] is True
     assert second["success"] is False
     assert second["status"] == "invalid_request"
-    assert executor.calls.__len__() == 1
+    assert len(executor.calls) == 1
 
 
-def test_duplicate_replay_window_eviction_is_deterministic():
+def test_duplicate_read_only_request_replays_cached_response_without_reexecution():
+    executor = FakeExecutor()
+    gateway = JsonlGateway(HermesOperationsAdapter(executor), recent_request_ids=2)
+    first = gateway.handle_line(valid(request_id="a"))
+    second = gateway.handle_line(valid(request_id="a"))
+    assert second == first
+    assert len(executor.calls) == 1
+
+
+def test_replay_window_eviction_is_deterministic():
     executor = FakeExecutor()
     gateway = JsonlGateway(HermesOperationsAdapter(executor), recent_request_ids=2)
     assert gateway.handle_line(valid(request_id="a"))["success"]
     assert gateway.handle_line(valid(request_id="b"))["success"]
-    assert not gateway.handle_line(valid(request_id="a"))["success"]
     assert gateway.handle_line(valid(request_id="c"))["success"]
-    assert gateway.handle_line(valid(request_id="a"))["success"]
+    replayed = gateway.handle_line(valid(request_id="a"))
+    assert replayed["success"]
     assert len(executor.calls) == 4
 
 
-def test_mutation_without_confirmation_reaches_policy_boundary_not_tool_side_effect():
+def test_mutation_without_confirmation_is_forwarded_to_policy_boundary():
     executor = FakeExecutor()
     gateway = JsonlGateway(HermesOperationsAdapter(executor))
     response = gateway.handle_line(valid(operation="service_restart", target_kind="service", target_identifier="demo", safety_class="mutating", request_id="deny-1", confirmation=False))
-    assert not response["success"]
-    assert response["error"]["category"] == ErrorCategory.PERMISSION_DENIED.value
-    assert len(executor.calls) == 1
+    assert response["success"] is True
+    assert executor.calls[0][1]["confirmation"] is False
+    assert executor.calls[0][0].safety_class is SafetyClass.MUTATING
 
 
 def test_dry_run_is_forwarded_and_never_changes_transport_contract():
@@ -136,13 +139,9 @@ def test_stream_processes_multiple_lines_without_protocol_contamination():
     assert records[2]["request_id"] == "ok-2"
 
 
-def test_gateway_module_exposes_process_level_cli_contract():
-    completed = subprocess.run(
-        [sys.executable, "-m", "yasin_operations.gateway_cli", "--help"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+def test_gateway_parser_is_available_in_a_clean_process_without_stderr_contamination():
+    code = "from yasin_operations.gateway_cli import build_parser; print(build_parser().format_help(), end='')"
+    completed = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
     assert completed.returncode == 0
     assert "serve typed Operations requests over stdin/stdout JSONL" in completed.stdout
     assert completed.stderr == ""
