@@ -70,16 +70,12 @@ class ServiceSnapshot:
 
 
 class ServiceProbe(Protocol):
-    """External transport supplied by the embedding application."""
-
     def inspect(self, service_name: str) -> ServiceSnapshot:
         ...
 
 
 @dataclass(frozen=True)
 class AdapterResult:
-    """Structured adapter response independent of transport."""
-
     success: bool
     data: Mapping[str, Any] = field(default_factory=dict)
     error: Mapping[str, Any] | None = None
@@ -88,11 +84,8 @@ class AdapterResult:
     def from_operation(cls, result: OperationResult) -> "AdapterResult":
         error = None
         if result.error is not None:
-            error = {
-                "category": result.error.category.value,
-                "message": result.error.message,
-                "details": dict(result.error.details),
-            }
+            error = {"category": result.error.category.value, "message": result.error.message,
+                     "details": dict(result.error.details)}
         return cls(result.success, dict(result.data or {}), error)
 
 
@@ -114,10 +107,8 @@ class EcosystemServiceAdapter:
 
     @property
     def supported_operations(self) -> tuple[str, ...]:
-        return tuple(sorted(
-            f"{self.operation_prefix}_{suffix}"
-            for suffix in ("status", "health", "version", "capabilities")
-        ))
+        return tuple(sorted(f"{self.operation_prefix}_{suffix}"
+                            for suffix in ("status", "health", "version", "capabilities")))
 
     def inspect(self) -> ServiceSnapshot:
         try:
@@ -125,21 +116,21 @@ class EcosystemServiceAdapter:
             if not isinstance(snapshot, ServiceSnapshot):
                 raise TypeError("probe returned an invalid ServiceSnapshot")
             if snapshot.service != self.service_name:
-                return ServiceSnapshot(service=self.service_name, available=False,
-                                       state="unavailable", error="probe returned a mismatched service identity")
+                return ServiceSnapshot(service=self.service_name, available=False, state="failed",
+                                       error="probe returned a mismatched service identity")
             if snapshot.contract_version != self.contract_version:
-                return ServiceSnapshot(service=self.service_name, available=False,
-                                       state="failed", error="unsupported adapter contract version")
+                return ServiceSnapshot(service=self.service_name, available=False, state="failed",
+                                       error="unsupported adapter contract version")
             return snapshot
         except (ConnectionError, TimeoutError, OSError):
-            return ServiceSnapshot(service=self.service_name, available=False,
-                                   state="unavailable", error="service probe unavailable")
-        except ValueError:
-            return ServiceSnapshot(service=self.service_name, available=False,
-                                   state="failed", error="service probe returned invalid data")
+            return ServiceSnapshot(service=self.service_name, available=False, state="unavailable",
+                                   error="service probe unavailable")
+        except (ValueError, TypeError):
+            return ServiceSnapshot(service=self.service_name, available=False, state="failed",
+                                   error="service probe returned invalid data")
         except Exception:  # noqa: BLE001 - adapter boundary must remain isolated
-            return ServiceSnapshot(service=self.service_name, available=False,
-                                   state="failed", error="service probe failed")
+            return ServiceSnapshot(service=self.service_name, available=False, state="failed",
+                                   error="service probe failed")
 
     def build_operation(self, operation_name: str, *, target_identifier: str = "service",
                         parameters: Mapping[str, Any] | None = None) -> Operation:
@@ -149,8 +140,7 @@ class EcosystemServiceAdapter:
             raise ValueError("target_identifier must be a non-empty string")
         if parameters is not None and not isinstance(parameters, Mapping):
             raise ValueError("parameters must be a mapping")
-        return Operation(name=operation_name,
-                         target=OperationTarget(kind="ecosystem_service", identifier=target_identifier),
+        return Operation(name=operation_name, target=OperationTarget(kind="ecosystem_service", identifier=target_identifier),
                          safety_class=SafetyClass.READ_ONLY, parameters=dict(parameters or {}))
 
     def execute(self, operation_name: str, *, target_identifier: str = "service",
@@ -158,30 +148,28 @@ class EcosystemServiceAdapter:
         try:
             operation = self.build_operation(operation_name, target_identifier=target_identifier, parameters=parameters)
         except ValueError as exc:
-            return AdapterResult(success=False, error={"category": ErrorCategory.VALIDATION_ERROR.value,
-                                                        "message": str(exc), "details": {}})
+            return AdapterResult(False, error={"category": ErrorCategory.VALIDATION_ERROR.value,
+                                                "message": str(exc), "details": {}})
         if self.executor is None:
-            return AdapterResult(success=False, error={
-                "category": ErrorCategory.UNAVAILABLE_DEPENDENCY.value,
-                "message": "Yasin-Operations executor is unavailable", "details": {}})
+            return AdapterResult(False, error={"category": ErrorCategory.UNAVAILABLE_DEPENDENCY.value,
+                                                "message": "Yasin-Operations executor is unavailable", "details": {}})
         try:
             return AdapterResult.from_operation(self.executor.execute(operation))
         except (ConnectionError, TimeoutError) as exc:
-            return AdapterResult(success=False, error={
-                "category": ErrorCategory.UNAVAILABLE_DEPENDENCY.value,
-                "message": str(exc) or "executor unavailable", "details": {}})
+            return AdapterResult(False, error={"category": ErrorCategory.UNAVAILABLE_DEPENDENCY.value,
+                                                "message": str(exc) or "executor unavailable", "details": {}})
         except Exception:
-            return AdapterResult(success=False, error={
-                "category": ErrorCategory.INTERNAL_ERROR.value,
-                "message": "ecosystem operation failed", "details": {}})
+            return AdapterResult(False, error={"category": ErrorCategory.INTERNAL_ERROR.value,
+                                                "message": "ecosystem operation failed", "details": {}})
 
     def inspect_result(self) -> AdapterResult:
         snapshot = self.inspect()
         if not snapshot.available:
-            category = (ErrorCategory.VALIDATION_ERROR.value if snapshot.state == "failed"
-                        and snapshot.error == "service probe returned invalid data"
+            validation_errors = {"service probe returned invalid data", "unsupported adapter contract version",
+                                 "probe returned a mismatched service identity"}
+            category = (ErrorCategory.VALIDATION_ERROR.value if snapshot.error in validation_errors
                         else ErrorCategory.UNAVAILABLE_DEPENDENCY.value)
-            return AdapterResult(success=False, data=snapshot.as_dict(), error={
-                "category": category,
-                "message": snapshot.error or "service unavailable", "details": {}})
-        return AdapterResult(success=True, data=snapshot.as_dict())
+            return AdapterResult(False, data=snapshot.as_dict(), error={"category": category,
+                                                                         "message": snapshot.error or "service unavailable",
+                                                                         "details": {}})
+        return AdapterResult(True, data=snapshot.as_dict())
