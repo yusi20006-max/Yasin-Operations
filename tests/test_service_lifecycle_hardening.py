@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from yasin_operations.runtime.service import ServiceCommandError, ServiceNotFoundError, ServiceState
+from yasin_operations.runtime.service import ServiceCommandError, ServiceNotFoundError, ServiceTimeoutError
 from yasin_operations.runtime.termux.runit import RunitServiceBackend, RunitServiceDefinition
 
 
@@ -44,8 +44,13 @@ def test_missing_service_directory_is_rejected(tmp_path: Path):
         service.restart("demo")
 
 
-def test_unavailable_adapter_is_non_mutating(tmp_path: Path):
-    service = RunitServiceBackend(Inspector(), str(tmp_path), [RunitServiceDefinition("demo")], sv_path=str(tmp_path / "missing"))
-    info = service.stop("demo")
-    assert info.state == ServiceState.UNKNOWN
-    assert info.health_state == "unavailable"
+def test_unavailable_adapter_never_reports_a_mutation_success(tmp_path: Path):
+    service = RunitServiceBackend(
+        Inspector(),
+        str(tmp_path),
+        [RunitServiceDefinition("demo")],
+        timeout=0.05,
+        sv_path=str(tmp_path / "missing"),
+    )
+    with pytest.raises(ServiceTimeoutError):
+        service.stop("demo")
