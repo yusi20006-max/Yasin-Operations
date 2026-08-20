@@ -189,3 +189,37 @@ def test_protected_target_is_denied_even_with_confirmation():
     result = executor.execute(op, confirmation=True)
     assert result.success is False
     assert result.error.category == ErrorCategory.PERMISSION_DENIED
+
+
+def test_executor_rejects_truthy_string_confirmation():
+    registry = ToolRegistry()
+    registry.register(MutatingCapabilityTool())
+    executor = Executor(registry)
+    op = Operation(name="do_thing", target=_target(), safety_class=SafetyClass.MUTATING)
+
+    with pytest.raises(ValueError, match="confirmation must be a boolean"):
+        executor.execute(op, confirmation="true")
+
+
+def test_executor_rejects_truthy_string_dry_run():
+    registry = ToolRegistry()
+    registry.register(SucceedingTool())
+    executor = Executor(registry)
+    op = Operation(name="do_thing", target=_target(), safety_class=SafetyClass.READ_ONLY)
+
+    with pytest.raises(ValueError, match="dry_run must be a boolean"):
+        executor.execute(op, dry_run="true")
+
+
+def test_executor_rejects_non_string_identity_fields():
+    registry = ToolRegistry()
+    registry.register(SucceedingTool())
+    executor = Executor(registry)
+    op = Operation(name="do_thing", target=_target(), safety_class=SafetyClass.READ_ONLY)
+
+    with pytest.raises(ValueError, match="actor must be a non-empty string"):
+        executor.execute(op, actor=123)
+    with pytest.raises(ValueError, match="source must be a non-empty string"):
+        executor.execute(op, source=123)
+    with pytest.raises(ValueError, match="correlation_id must be a non-empty string"):
+        executor.execute(op, correlation_id=123)
