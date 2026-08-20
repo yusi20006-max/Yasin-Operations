@@ -52,6 +52,17 @@ def test_protected_target_requires_allowlist_and_confirmation():
     assert policy.evaluate(_operation(), confirmation=True).allowed
 
 
+def test_protected_target_cannot_be_bypassed_by_auto_approval():
+    policy = SafetyPolicy.with_protected_targets(
+        {("service", "demo")},
+        auto_approved_mutations=frozenset({"restart"}),
+        protected_mutation_allowlist=frozenset({"restart"}),
+    )
+    decision = policy.evaluate(_operation())
+    assert decision.denied
+    assert decision.requires_confirmation
+
+
 def test_dry_run_is_non_mutating_and_deterministic():
     operation = _operation()
     policy = SafetyPolicy()
@@ -61,6 +72,16 @@ def test_dry_run_is_non_mutating_and_deterministic():
     assert first["dry_run"] is True
     assert first["operation_id"] == operation.id
     assert first["parameters"] == {"reason": "test"}
+
+
+def test_confirmation_must_be_boolean():
+    with pytest.raises(ValueError, match="confirmation must be a boolean"):
+        SafetyPolicy().evaluate(_operation(), confirmation="true")
+
+
+def test_dry_run_must_be_boolean():
+    with pytest.raises(ValueError, match="dry_run must be a boolean"):
+        SafetyPolicy().evaluate(_operation(), dry_run=1)
 
 
 def test_invalid_limits_are_rejected():
