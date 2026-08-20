@@ -19,16 +19,17 @@ from yasin_operations.safety.classification import SafetyClass
 
 @dataclass(frozen=True)
 class ToolCapability:
-    """One operation name a tool supports, and its safety class.
+    """One operation name a tool supports, and its execution semantics.
 
-    The safety_class here is authoritative for what the tool
-    declares it does; it is compared against the Operation's own
-    safety_class by the execution layer (see execution/executor.py)
-    to catch a mismatch rather than trusting the caller blindly.
+    ``retryable`` means a failed attempt is safe to invoke again. For a
+    mutating operation, ``idempotent`` must also be true before the Executor
+    will retry it. Both flags default to false so existing tools fail closed.
     """
 
     operation_name: str
     safety_class: SafetyClass
+    retryable: bool = False
+    idempotent: bool = False
 
 
 @dataclass(frozen=True)
