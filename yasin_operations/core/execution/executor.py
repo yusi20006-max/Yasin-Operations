@@ -40,8 +40,19 @@ class Executor:
         dry_run: bool = False,
         correlation_id: str | None = None,
     ) -> OperationResult:
-        if not actor.strip() or not source.strip():
-            raise ValueError("actor and source must not be empty")
+        if not isinstance(actor, str) or not actor.strip():
+            raise ValueError("actor must be a non-empty string")
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError("source must be a non-empty string")
+        if not isinstance(confirmation, bool):
+            raise ValueError("confirmation must be a boolean")
+        if not isinstance(dry_run, bool):
+            raise ValueError("dry_run must be a boolean")
+        if correlation_id is not None and (
+            not isinstance(correlation_id, str) or not correlation_id.strip()
+        ):
+            raise ValueError("correlation_id must be a non-empty string when provided")
+
         correlation_id = correlation_id or str(uuid.uuid4())
         started = time.monotonic()
 
