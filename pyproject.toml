@@ -21,9 +21,6 @@ test = [
     "pytest>=7.0.0",
 ]
 
-[tool.setuptools]
-script-files = ["scripts/yasin-operations"]
-
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["yasin_operations*"]

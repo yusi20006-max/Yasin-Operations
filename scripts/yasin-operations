@@ -1,5 +1,0 @@
-#!/usr/bin/env python3
-"""Portable console launcher for Yasin-Operations."""
-from yasin_operations.cli import main
-
-raise SystemExit(main())
