@@ -1,13 +1,16 @@
 """Local JSONL gateway for external Operations Agent clients."""
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import deque
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any, Mapping, TextIO
 
 from yasin_operations.adapters.hermes.adapter import HermesOperationsAdapter
 from yasin_operations.adapters.hermes.contracts import HermesOperationRequest, HermesOperationResponse
+from yasin_operations.safety.classification import SafetyClass
 
 GATEWAY_SCHEMA_VERSION = 1
 DEFAULT_MAX_LINE_BYTES = 64 * 1024
@@ -28,6 +31,24 @@ def _validate_identifier(name: str, value: str, maximum: int = DEFAULT_MAX_IDENT
 def _validate_schema_version(value: object) -> None:
     if type(value) is not int or value != GATEWAY_SCHEMA_VERSION:
         raise ValueError("unsupported schema_version")
+
+
+def _request_fingerprint(request: HermesOperationRequest) -> str:
+    """Return a stable digest of all execution-relevant request fields."""
+    canonical = {
+        "operation": request.operation,
+        "target_kind": request.target_kind,
+        "target_identifier": request.target_identifier,
+        "safety_class": request.safety_class.value,
+        "parameters": request.parameters,
+        "confirmation": request.confirmation,
+        "dry_run": request.dry_run,
+        "actor": request.actor,
+        "source": request.source,
+        "correlation_id": request.correlation_id,
+    }
+    encoded = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -54,6 +75,12 @@ class JsonlGateway:
     The gateway is a trust boundary: transport metadata is validated before
     the adapter is called, and unexpected internal exceptions are converted to
     a stable generic error rather than exposing exception text to clients.
+
+    Request lifecycle semantics are intentionally bounded and local:
+    read-only requests may replay the exact completed response for a matching
+    request ID; mutating requests reject duplicates. Concurrent reuse of an
+    in-flight request ID is rejected for every operation class. The ledger is
+    in-memory and is reset when the process restarts.
     """
 
     def __init__(
@@ -76,8 +103,10 @@ class JsonlGateway:
         self._max_identifier_length = max_identifier_length
         self._recent_request_ids = recent_request_ids
         self._reject_duplicates = reject_duplicates
-        self._seen_ids: set[str] = set()
-        self._seen_order: deque[str] = deque()
+        self._records: dict[str, tuple[str, SafetyClass, dict[str, Any]]] = {}
+        self._record_order: deque[str] = deque()
+        self._inflight: set[str] = set()
+        self._ledger_lock = Lock()
         self._stopped = False
 
     @property
@@ -87,20 +116,48 @@ class JsonlGateway:
     def stop(self) -> None:
         self._stopped = True
 
-    def _remember_request_id(self, request_id: str) -> None:
-        if not self._recent_request_ids:
+    def _reserve_request(self, request: HermesOperationRequest) -> dict[str, Any] | None:
+        """Reserve a request ID or return a cached read-only response."""
+        if not self._recent_request_ids or not self._reject_duplicates:
+            return None
+        fingerprint = _request_fingerprint(request)
+        with self._ledger_lock:
+            record = self._records.get(request.request_id)
+            if record is not None:
+                old_fingerprint, safety_class, cached_response = record
+                if old_fingerprint != fingerprint:
+                    raise ValueError("request_id was already used for a different request")
+                if safety_class is SafetyClass.READ_ONLY:
+                    return dict(cached_response)
+                raise ValueError("duplicate request_id for mutating operation")
+            if request.request_id in self._inflight:
+                raise ValueError("request_id is already in progress")
+            self._inflight.add(request.request_id)
+        return None
+
+    def _record_request(
+        self,
+        request: HermesOperationRequest,
+        response: dict[str, Any],
+    ) -> None:
+        if not self._recent_request_ids or not self._reject_duplicates:
             return
-        if request_id in self._seen_ids:
-            if self._reject_duplicates:
-                raise ValueError("duplicate request_id")
-            return
-        self._seen_ids.add(request_id)
-        self._seen_order.append(request_id)
-        while len(self._seen_order) > self._recent_request_ids:
-            self._seen_ids.discard(self._seen_order.popleft())
+        fingerprint = _request_fingerprint(request)
+        with self._ledger_lock:
+            self._inflight.discard(request.request_id)
+            self._records[request.request_id] = (fingerprint, request.safety_class, dict(response))
+            self._record_order.append(request.request_id)
+            while len(self._record_order) > self._recent_request_ids:
+                old_id = self._record_order.popleft()
+                self._records.pop(old_id, None)
+
+    def _release_inflight(self, request_id: str) -> None:
+        with self._ledger_lock:
+            self._inflight.discard(request_id)
 
     def handle_line(self, line: str) -> dict[str, Any]:
         request_id = "unknown"
+        tracked_request: HermesOperationRequest | None = None
         try:
             if len(line.encode("utf-8")) > self._max_line_bytes:
                 raise ValueError("request exceeds maximum line size")
@@ -137,8 +194,17 @@ class JsonlGateway:
             if parameter_bytes > self._max_parameter_bytes:
                 raise ValueError("parameters exceed maximum size")
 
-            self._remember_request_id(request.request_id)
+            tracked_request = request if self._recent_request_ids and self._reject_duplicates else None
+            if tracked_request is not None:
+                cached = self._reserve_request(tracked_request)
+                if cached is not None:
+                    return cached
+
             response = self._adapter.handle(request)
+            response_dict = GatewayResponse(GATEWAY_SCHEMA_VERSION, response).as_dict()
+            if tracked_request is not None:
+                self._record_request(tracked_request, response_dict)
+            return response_dict
         except json.JSONDecodeError as exc:
             response = HermesOperationResponse(
                 request_id=request_id,
@@ -170,7 +236,14 @@ class JsonlGateway:
                 },
                 service_available=self._adapter.available,
             )
-        return GatewayResponse(GATEWAY_SCHEMA_VERSION, response).as_dict()
+        finally:
+            if tracked_request is not None and request_id == tracked_request.request_id:
+                # Successful paths record and clear the reservation; failures
+                # before the response is constructed must not poison the ID.
+                self._release_inflight(request_id)
+
+        response_dict = GatewayResponse(GATEWAY_SCHEMA_VERSION, response).as_dict()
+        return response_dict
 
     def serve_once(self, input_stream: TextIO, output_stream: TextIO) -> bool:
         line = input_stream.readline()
