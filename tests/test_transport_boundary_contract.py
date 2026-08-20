@@ -90,5 +90,5 @@ def test_repository_does_not_claim_the_jsonl_gateway_is_mcp() -> None:
     reconciliation_text = reconciliation.read_text(encoding="utf-8").lower()
     boundary_text = boundary.read_text(encoding="utf-8").lower()
 
-    assert "jsonl gateway is not" in reconciliation_text
+    assert "does not make yasin-operations an mcp server" in reconciliation_text
     assert "a real mcp server is **not** part" in boundary_text
