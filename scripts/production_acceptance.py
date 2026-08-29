@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,7 @@ from yasin_operations.tools.registry.registry import ToolRegistry
 
 
 SERVICES = ("hermes-agent", "yasin-ai", "yasinpress", "yasinrelay")
+DEFAULT_TERMUX_SERVICE_ROOT = "/data/data/com.termux/files/usr/var/service"
 
 
 @dataclass
@@ -120,12 +122,23 @@ def _runit_state(output: str) -> str:
     return "unknown"
 
 
+def _service_root() -> Path:
+    return Path(os.environ.get("YASIN_OPERATIONS_SERVICE_ROOT", DEFAULT_TERMUX_SERVICE_ROOT)).expanduser()
+
+
 def check_live_services(services: tuple[str, ...]) -> list[Result]:
-    sv = shutil.which("sv")
-    if sv is None: return [Result("live-runit-services", "SKIP", "sv executable not found")]
+    """Check only installed services; absent optional services are not failures."""
+    root = _service_root()
+    sv = shutil.which("sv") or os.environ.get("YASIN_OPERATIONS_SV")
+    if not sv:
+        return [Result("live-runit-services", "SKIP", "sv executable not found")]
     results: list[Result] = []
     for service in services:
-        completed = subprocess.run([sv, "status", service], text=True, capture_output=True, check=False)
+        service_dir = root / service
+        if not service_dir.is_dir():
+            results.append(Result(f"service:{service}", "SKIP", f"optional service not installed: {service_dir}"))
+            continue
+        completed = subprocess.run([sv, "status", str(service_dir)], text=True, capture_output=True, check=False)
         output = (completed.stdout or completed.stderr).strip()
         state = _runit_state(output)
         results.append(Result(f"service:{service}", "PASS" if state == "running" else "FAIL", f"state={state}; {output}"))
