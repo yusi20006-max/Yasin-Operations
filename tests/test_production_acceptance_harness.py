@@ -10,6 +10,7 @@ from scripts.production_acceptance import (
     _runit_state,
     check_ecosystem_adapters,
     check_hermes,
+    check_live_services,
 )
 
 
@@ -38,6 +39,14 @@ def test_ecosystem_acceptance_checks_inject_probes():
     results = check_ecosystem_adapters()
     assert len(results) == 3
     assert all(result.status == "PASS" for result in results)
+
+
+def test_live_acceptance_skips_absent_optional_termux_services(tmp_path, monkeypatch):
+    monkeypatch.setenv("YASIN_OPERATIONS_SERVICE_ROOT", str(tmp_path))
+    monkeypatch.setenv("YASIN_OPERATIONS_SV", "/bin/true")
+    results = check_live_services(("hermes-agent", "yasin-ai"))
+    assert [result.status for result in results] == ["SKIP", "SKIP"]
+    assert all("optional service not installed" in result.detail for result in results)
 
 
 def test_acceptance_cli_emits_successful_json_envelope():
