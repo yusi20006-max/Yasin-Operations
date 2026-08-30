@@ -74,19 +74,34 @@ def test_jsonl_boundary_replays_recent_read_only_request_without_reexecution() -
 
 
 def test_no_mcp_dependency_is_required_by_the_package() -> None:
+    """MCP may appear only as an optional extra; never as a core dependency."""
     pyproject = Path(__file__).parents[1] / "pyproject.toml"
     text = pyproject.read_text(encoding="utf-8")
+    lower = text.lower()
 
-    assert "mcp" not in text.lower()
-    assert "fastmcp" not in text.lower()
+    assert "fastmcp" not in lower
+
+    # Core project dependencies must remain empty (no hard MCP dep).
+    assert "dependencies = []" in text
+
+    # MCP is allowed only under optional-dependencies.
+    assert "[project.optional-dependencies]" in text
+    assert "mcp = [" in text or 'mcp = [' in lower
+    # Ensure the optional extra pins the supported SDK range.
+    assert "mcp>=" in lower or '"mcp>=' in lower or "'mcp>=" in lower
 
 
 def test_repository_does_not_claim_the_jsonl_gateway_is_mcp() -> None:
+    """JSONL remains canonical; MCP is an optional adapter, not a rebrand of JSONL."""
     reconciliation = Path(__file__).parents[1] / "docs" / "ARCHITECTURE-RECONCILIATION.md"
     boundary = Path(__file__).parents[1] / "docs" / "TRANSPORT-BOUNDARY.md"
 
     reconciliation_text = reconciliation.read_text(encoding="utf-8").lower()
     boundary_text = boundary.read_text(encoding="utf-8").lower()
 
-    assert "does not make yasin-operations an mcp server" in reconciliation_text
-    assert "no mcp server implementation" in boundary_text
+    assert "jsonl" in boundary_text
+    assert "canonical" in boundary_text
+    assert "optional" in boundary_text and "mcp" in boundary_text
+    # Must not equate the JSONL gateway with MCP.
+    assert "the jsonl protocol is not described as mcp" in boundary_text
+    assert "mcp is never a core runtime dependency" in boundary_text or "never a core runtime dependency" in boundary_text
