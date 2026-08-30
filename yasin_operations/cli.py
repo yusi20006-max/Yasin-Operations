@@ -10,6 +10,7 @@ from yasin_operations.core.execution.executor import Executor
 from yasin_operations.core.operations.models import Operation, OperationTarget
 from yasin_operations.logging.audit import InMemoryAuditRecorder
 from yasin_operations.runtime.resources import snapshot as resource_snapshot
+from yasin_operations.runtime.monitoring import build_monitoring_snapshot
 from yasin_operations.runtime.termux.diagnostics import detect_termux
 from yasin_operations.runtime.termux.runit import RunitServiceBackend
 from yasin_operations.runtime.tools import register_runtime_tools
@@ -73,6 +74,11 @@ def build_parser() -> argparse.ArgumentParser:
     _add_global_options(health, suppress_defaults=True)
     doctor = sub.add_parser("doctor", help="run non-invasive Termux/runit diagnostics")
     _add_global_options(doctor, suppress_defaults=True)
+    monitor = sub.add_parser(
+        "monitor",
+        help="read-only monitoring snapshot (status + health + doctor)",
+    )
+    _add_global_options(monitor, suppress_defaults=True)
     for name in sorted(MUTATING_COMMANDS):
         command = sub.add_parser(name, help=f"{name} a configured service")
         _add_global_options(command, suppress_defaults=True)
@@ -133,23 +139,23 @@ def _service_summary(services: Sequence[dict[str, Any]]) -> dict[str, Any]:
 
 def _health_exit_code(health: dict[str, Any], service_summary: dict[str, Any]) -> int:
     status = str(health.get("status", "unknown"))
-    if status in {"unhealthy", "timeout"} or service_summary["health"] == "unhealthy":
+    if status in {"unhealthy", "timeout"} or service_summary.get("health") == "unhealthy":
         return HEALTH_EXIT_UNHEALTHY
-    if status in {"degraded", "unknown"} or service_summary["health"] == "degraded":
+    if status in {"degraded", "unknown"} or service_summary.get("health") == "degraded":
         return HEALTH_EXIT_DEGRADED
     return HEALTH_EXIT_OK
 
 
-def _configuration_error(command: str, exc: InvalidConfigurationError, as_json: bool) -> int:
-    _emit({"schema_version": SCHEMA_VERSION, "command": command, "success": False, "error": {"category": "configuration", "message": str(exc)}}, as_json)
+def _configuration_error(command: str, exc: Exception, as_json: bool) -> int:
+    _emit({"schema_version": SCHEMA_VERSION, "command": command, "success": False, "error": {"category": "configuration_error", "message": str(exc)}}, as_json)
     return CONFIG_EXIT_ERROR
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    command = str(args.command)
     as_json = bool(getattr(args, "as_json", False))
+    command = args.command
     try:
         executor, config, audit = build_runtime(_configuration_overrides(args))
     except InvalidConfigurationError as exc:
@@ -177,6 +183,52 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not success:
             return HEALTH_EXIT_UNHEALTHY
         return _health_exit_code(health, service_summary)
+    if command == "monitor":
+        health_result = executor.execute(
+            Operation(
+                name="health_check",
+                target=OperationTarget(kind="self", identifier="runtime"),
+                safety_class=SafetyClass.READ_ONLY,
+            ),
+            actor="cli",
+            source="cli.monitor.health",
+        )
+        service_result = executor.execute(
+            Operation(
+                name="list_services",
+                target=OperationTarget(kind="service", identifier="*"),
+                safety_class=SafetyClass.READ_ONLY,
+            ),
+            actor="cli",
+            source="cli.monitor.services",
+        )
+        termux = detect_termux(
+            config.service_root,
+            sv_path=config.sv_path,
+            expected_services=config.service_names,
+        )
+        diagnostics_ok = not termux.issues
+        snapshot = build_monitoring_snapshot(
+            services_result=service_result,
+            health_result=health_result,
+            diagnostics={
+                "termux": termux.as_dict(),
+                "configuration": {
+                    "service_root": config.service_root,
+                    "sv_path": config.sv_path,
+                    "service_names": list(config.service_names),
+                    "missing_services": list(config.missing_services()),
+                },
+            },
+            diagnostics_ok=diagnostics_ok,
+        )
+        payload = snapshot.as_dict()
+        _emit(payload, as_json or True)
+        if not snapshot.success or snapshot.aggregate_health == "unhealthy":
+            return HEALTH_EXIT_UNHEALTHY
+        if snapshot.aggregate_health == "degraded":
+            return HEALTH_EXIT_DEGRADED
+        return HEALTH_EXIT_OK
     operation = _operation_for_command(command, args.service)
     result = executor.execute(operation, actor="cli", source=f"cli.{command}", confirmation=bool(args.confirm), dry_run=bool(args.dry_run))
     _emit({"schema_version": SCHEMA_VERSION, "command": command, "success": result.success, "operation_id": result.operation_id, "data": dict(result.data or {}), "error": _error(result), "audit_entries": len(audit.entries)}, as_json)
