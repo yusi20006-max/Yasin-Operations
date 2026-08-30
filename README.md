@@ -48,6 +48,7 @@ Adapters cannot bypass that boundary.
 
 ```sh
 python -m yasin_operations doctor
+python -m yasin_operations monitor
 python -m yasin_operations status
 python -m yasin_operations health
 python -m yasin_operations restart <service> --dry-run
