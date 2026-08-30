@@ -27,6 +27,13 @@ DEFAULT_EXECUTION_TIMEOUT_SECONDS = 30.0
 DEFAULT_STARTUP_GRACE_SECONDS = 2.0
 DEFAULT_ALWAYS_ON = True
 DEFAULT_SERVICE_NAMES: tuple[str, ...] = ()
+DEFAULT_ECOSYSTEM_SERVICE_NAMES: tuple[str, ...] = (
+    "yasin-core",
+    "yasin-agent",
+    "yasin-hub",
+    "yasin-relay",
+    "yasin-mcp",
+)
 
 
 class InvalidConfigurationError(ValueError):
@@ -134,17 +141,25 @@ def _env_bool(name: str, default: bool) -> bool:
     )
 
 
-def _env_services(name: str) -> tuple[str, ...]:
-    raw = os.environ.get(name, "")
+def _env_services(name: str) -> tuple[str, ...] | None:
+    if name not in os.environ:
+        return None
+    raw = os.environ[name]
     return tuple(sorted({item.strip() for item in raw.split(",") if item.strip()}))
 
 
 def load_config(overrides: Mapping[str, object] | None = None) -> OperationsConfig:
     """Load defaults, apply environment configuration, then explicit overrides."""
+    env_service_names = _env_services("YASIN_OPERATIONS_SERVICE_NAMES")
+    service_names = (
+        DEFAULT_ECOSYSTEM_SERVICE_NAMES
+        if env_service_names is None
+        else env_service_names
+    )
     config = OperationsConfig(
         service_root=os.environ.get("YASIN_OPERATIONS_SERVICE_ROOT", DEFAULT_SERVICE_ROOT),
         sv_path=os.environ.get("YASIN_OPERATIONS_SV_PATH", DEFAULT_SV_PATH),
-        service_names=_env_services("YASIN_OPERATIONS_SERVICE_NAMES"),
+        service_names=service_names,
         execution_timeout_seconds=_env_float(
             "YASIN_OPERATIONS_EXECUTION_TIMEOUT_SECONDS",
             DEFAULT_EXECUTION_TIMEOUT_SECONDS,

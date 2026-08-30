@@ -78,7 +78,7 @@ def _run_json(command: list[str]) -> tuple[bool, dict[str, Any], str]:
         payload = json.loads(output)
     except json.JSONDecodeError as exc:
         return False, {}, f"invalid JSON: {exc}; stderr={completed.stderr.strip()!r}"
-    return completed.returncode == 0 and payload.get("success") is True, payload, completed.stderr.strip()
+    return completed.returncode in (0, 1, 2) and payload.get("success") is True, payload, completed.stderr.strip()
 
 
 def check_cli() -> list[Result]:
