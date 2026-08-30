@@ -7,19 +7,19 @@ from pathlib import Path
 
 from scripts.production_acceptance import (
     FakeProbe,
-    _runit_state,
     check_ecosystem_adapters,
     check_hermes,
     check_live_services,
 )
+from yasin_operations.runtime.termux.live_acceptance import _runit_prefix_state
 
 
 def test_runit_state_normalization_is_authoritative():
-    assert _runit_state("run: service: (pid 123) 10s") == "running"
-    assert _runit_state("down: service: 10s, normally up") == "stopped"
-    assert _runit_state("fail: service: 10s") == "failed"
-    assert _runit_state("timeout: service: 10s") == "failed"
-    assert _runit_state("unexpected output") == "unknown"
+    assert _runit_prefix_state("run: service: (pid 123) 10s") == "running"
+    assert _runit_prefix_state("down: service: 10s, normally up") == "stopped"
+    assert _runit_prefix_state("fail: service: 10s") == "failed"
+    assert _runit_prefix_state("timeout: service: 10s") == "failed"
+    assert _runit_prefix_state("unexpected output") == "unknown"
 
 
 def test_fake_probe_matches_requested_service():
@@ -42,11 +42,19 @@ def test_ecosystem_acceptance_checks_inject_probes():
 
 
 def test_live_acceptance_skips_absent_optional_termux_services(tmp_path, monkeypatch):
-    monkeypatch.setenv("YASIN_OPERATIONS_SERVICE_ROOT", str(tmp_path))
-    monkeypatch.setenv("YASIN_OPERATIONS_SV", "/bin/true")
+    root = tmp_path / "service"
+    root.mkdir()
+    sv = tmp_path / "sv"
+    sv.write_text("#!/bin/sh\nexit 0\n")
+    sv.chmod(0o755)
+    monkeypatch.setenv("YASIN_OPERATIONS_SERVICE_ROOT", str(root))
+    monkeypatch.setenv("YASIN_OPERATIONS_SV_PATH", str(sv))
+    monkeypatch.setenv("PREFIX", "/data/data/com.termux/files/usr")
     results = check_live_services(("hermes-agent", "yasin-ai"))
-    assert [result.status for result in results] == ["SKIP", "SKIP"]
-    assert all("optional service not installed" in result.detail for result in results)
+    service_results = [r for r in results if r.name.startswith("service:")]
+    assert len(service_results) == 2
+    assert all(result.status == "SKIP" for result in service_results)
+    assert all("optional" in result.detail for result in service_results)
 
 
 def test_acceptance_cli_emits_successful_json_envelope():
@@ -64,3 +72,4 @@ def test_acceptance_cli_emits_successful_json_envelope():
     assert payload["summary"]["fail"] == 0
     assert payload["summary"]["pass"] > 0
     assert payload["summary"]["skip"] >= 1
+    assert "blocked" in payload["summary"]
