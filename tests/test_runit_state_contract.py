@@ -9,6 +9,11 @@ from yasin_operations.runtime.service import ServiceState
 from yasin_operations.runtime.termux.runit import RunitServiceBackend, RunitServiceDefinition
 
 
+class _Proc:
+    def __init__(self, pid: int):
+        self.pid = pid
+
+
 class FakeInspector:
     def __init__(self, mapping=None):
         self.mapping = mapping or {}
@@ -29,7 +34,7 @@ def _backend(tmp_path, monkeypatch, output: str, returncode: int = 0):
     completed = subprocess.CompletedProcess([str(sv), "status", str(service_dir)], returncode, output, "")
     monkeypatch.setattr("yasin_operations.runtime.termux.runit.subprocess.run", lambda *args, **kwargs: completed)
     monkeypatch.setattr("yasin_operations.runtime.termux.runit.os.access", lambda path, mode: True)
-    inspector = FakeInspector({"yasinpress": [1234]})
+    inspector = FakeInspector({"yasinpress": [_Proc(1234)]})
     backend = RunitServiceBackend(
         inspector,
         service_root=str(service_root),
