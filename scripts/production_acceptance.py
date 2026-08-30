@@ -29,6 +29,11 @@ SERVICES = ("hermes-agent", "yasin-ai", "yasinpress", "yasinrelay")
 DEFAULT_TERMUX_SERVICE_ROOT = "/data/data/com.termux/files/usr/var/service"
 
 
+def _service_root() -> Path:
+    """Resolve the configured Termux/runit service root (test/operator helper)."""
+    return Path(os.environ.get("YASIN_OPERATIONS_SERVICE_ROOT", DEFAULT_TERMUX_SERVICE_ROOT)).expanduser()
+
+
 @dataclass
 class Result:
     name: str
@@ -114,34 +119,19 @@ def check_ecosystem_adapters() -> list[Result]:
     return results
 
 
-def _runit_state(output: str) -> str:
-    text = output.strip()
-    if text.startswith("run:"): return "running"
-    if text.startswith("down:"): return "stopped"
-    if text.startswith("fail:") or text.startswith("timeout:"): return "failed"
-    return "unknown"
-
-
-def _service_root() -> Path:
-    return Path(os.environ.get("YASIN_OPERATIONS_SERVICE_ROOT", DEFAULT_TERMUX_SERVICE_ROOT)).expanduser()
-
-
 def check_live_services(services: tuple[str, ...]) -> list[Result]:
-    """Check only installed services; absent optional services are not failures."""
-    root = _service_root()
-    sv = shutil.which("sv") or os.environ.get("YASIN_OPERATIONS_SV")
-    if not sv:
-        return [Result("live-runit-services", "SKIP", "sv executable not found")]
+    """Read-only live Termux/runit checks with environment vs product separation."""
+    from yasin_operations.runtime.termux.live_acceptance import evaluate_live_services
+
+    report = evaluate_live_services(services)
     results: list[Result] = []
-    for service in services:
-        service_dir = root / service
-        if not service_dir.is_dir():
-            results.append(Result(f"service:{service}", "SKIP", f"optional service not installed: {service_dir}"))
-            continue
-        completed = subprocess.run([sv, "status", str(service_dir)], text=True, capture_output=True, check=False)
-        output = (completed.stdout or completed.stderr).strip()
-        state = _runit_state(output)
-        results.append(Result(f"service:{service}", "PASS" if state == "running" else "FAIL", f"state={state}; {output}"))
+    for item in report.results:
+        detail = item.detail
+        if item.category:
+            detail = f"[{item.category}] {detail}" if detail else f"[{item.category}]"
+        if item.state:
+            detail = f"{detail}; state={item.state}" if detail else f"state={item.state}"
+        results.append(Result(item.name, item.status, detail))
     return results
 
 
@@ -165,14 +155,27 @@ def main() -> int:
         results.extend(check_live_services(services))
     else:
         results.append(Result("live-runit-services", "SKIP", "use --live for read-only host verification"))
-    failed = [item for item in results if item.status == "FAIL"]
-    payload = {"success": not failed, "summary": {"pass": sum(item.status == "PASS" for item in results), "fail": sum(item.status == "FAIL" for item in results), "skip": sum(item.status == "SKIP" for item in results)}, "results": [item.__dict__ for item in results]}
-    if args.json: print(json.dumps(payload, indent=2, sort_keys=True))
+    failed = [item for item in results if item.status in {"FAIL", "BLOCKED"}]
+    payload = {
+        "success": not failed,
+        "summary": {
+            "pass": sum(item.status == "PASS" for item in results),
+            "fail": sum(item.status == "FAIL" for item in results),
+            "skip": sum(item.status == "SKIP" for item in results),
+            "blocked": sum(item.status == "BLOCKED" for item in results),
+        },
+        "results": [item.__dict__ for item in results],
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         for item in results:
             suffix = f": {item.detail}" if item.detail else ""
             print(f"[{item.status}] {item.name}{suffix}")
-        print(f"SUMMARY pass={payload['summary']['pass']} fail={payload['summary']['fail']} skip={payload['summary']['skip']}")
+        s = payload["summary"]
+        print(
+            f"SUMMARY pass={s['pass']} fail={s['fail']} skip={s['skip']} blocked={s['blocked']}"
+        )
     return 1 if failed else 0
 
 
