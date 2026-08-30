@@ -147,7 +147,7 @@ def _health_exit_code(health: dict[str, Any], service_summary: dict[str, Any]) -
 
 
 def _configuration_error(command: str, exc: Exception, as_json: bool) -> int:
-    _emit({"schema_version": SCHEMA_VERSION, "command": command, "success": False, "error": {"category": "configuration_error", "message": str(exc)}}, as_json)
+    _emit({"schema_version": SCHEMA_VERSION, "command": command, "success": False, "error": {"category": "configuration", "message": str(exc)}}, as_json)
     return CONFIG_EXIT_ERROR
 
 
