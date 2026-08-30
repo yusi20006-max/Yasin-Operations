@@ -25,10 +25,13 @@ _F = TypeVar("_F", bound=Callable[..., Any])
 
 
 def _tool() -> Callable[[_F], _F]:
-    """Register an MCP tool on supported runtimes, otherwise keep import safe."""
+    """Register an MCP tool on supported runtimes, otherwise keep import safe.
+
+    MCPServer.tool is a decorator *factory*; it must be called as ``@mcp.tool()``.
+    """
     if mcp is None:
         return lambda function: function
-    return mcp.tool
+    return mcp.tool()
 
 
 def _runtime() -> tuple[Any, Any]:
@@ -90,46 +93,45 @@ def yasin_health() -> dict[str, Any]:
         source="mcp.yasin_health.services",
     )
     service_data = dict(services.data or {})
-    items = list(service_data.get("services", []))
+    service_list = list(service_data.get("services", []))
     return {
         "success": health.success and services.success,
-        "health": dict(health.data or {}),
-        "services": {"items": items, "summary": _service_summary(items)},
-        "resources": resource_snapshot().as_dict(),
+        "health": health.data,
+        "services": {"items": service_list, "summary": _service_summary(service_list)},
+        "resources": resource_snapshot(),
         "error": _error(health) or _error(services),
     }
 
 
 @_tool()
 def yasin_doctor() -> dict[str, Any]:
-    """Run non-invasive local diagnostics for Yasin-Operations."""
-    executor, config = _runtime()
+    """Return Termux/runit diagnostics and local resource snapshot."""
     from yasin_operations.runtime.termux.diagnostics import detect_termux
 
+    _, config = _runtime()
     diagnostics = detect_termux(
         config.service_root,
         sv_path=config.sv_path,
         expected_services=config.service_names,
     )
     return {
-        "success": not diagnostics.issues,
+        "success": True,
         "termux": diagnostics.as_dict(),
-        "resources": resource_snapshot().as_dict(),
+        "resources": resource_snapshot(),
         "configuration": {
             "service_root": config.service_root,
             "sv_path": config.sv_path,
             "service_names": list(config.service_names),
-            "always_on": config.always_on,
         },
     }
 
 
 @_tool()
 def yasin_monitor() -> dict[str, Any]:
-    """Return a single read-only monitoring snapshot (status + health + doctor)."""
-    executor, config = _runtime()
+    """Return the canonical monitoring snapshot (status + health + doctor)."""
     from yasin_operations.runtime.termux.diagnostics import detect_termux
 
+    executor, config = _runtime()
     health = executor.execute(
         Operation(
             name="health_check",
@@ -148,52 +150,32 @@ def yasin_monitor() -> dict[str, Any]:
         actor="hermes",
         source="mcp.yasin_monitor.services",
     )
-    termux = detect_termux(
+    service_data = dict(services.data or {})
+    service_list = list(service_data.get("services", []))
+    diagnostics = detect_termux(
         config.service_root,
         sv_path=config.sv_path,
         expected_services=config.service_names,
     )
     snapshot = build_monitoring_snapshot(
-        services_result=services,
-        health_result=health,
-        diagnostics={
-            "termux": termux.as_dict(),
-            "configuration": {
-                "service_root": config.service_root,
-                "sv_path": config.sv_path,
-                "service_names": list(config.service_names),
-                "missing_services": list(config.missing_services()),
-            },
+        services=service_list,
+        health=health.data if isinstance(health.data, dict) else None,
+        diagnostics=diagnostics.as_dict(),
+        resources=resource_snapshot(),
+        configuration={
+            "service_root": config.service_root,
+            "sv_path": config.sv_path,
+            "service_names": list(config.service_names),
         },
-        diagnostics_ok=not termux.issues,
     )
-    return snapshot.as_dict()
+    payload = snapshot.as_dict()
+    payload["success"] = health.success and services.success
+    if not payload["success"]:
+        payload["error"] = _error(health) or _error(services)
+    return payload
 
 
 def _mutate(command: str, service: str, confirmation: bool, dry_run: bool) -> dict[str, Any]:
-    if not confirmation and not dry_run:
-        return {
-            "success": False,
-            "error": {
-                "category": "permission_denied",
-                "message": "mutating operation requires explicit confirmation",
-                "details": {"requires_confirmation": True},
-            },
-        }
-    if mcp is None:
-        reason = _support.reason if not _support.supported else "mcp SDK extra is not installed"
-        return {
-            "success": False,
-            "error": {
-                "category": "unavailable_dependency",
-                "message": reason,
-                "details": {
-                    "mcp_supported": _support.supported,
-                    "mcp_installed": _mcp_installed,
-                    "is_termux": _support.is_termux,
-                },
-            },
-        }
     executor, _config = _runtime()
     result = executor.execute(
         _service_operation(command, service),
@@ -204,36 +186,37 @@ def _mutate(command: str, service: str, confirmation: bool, dry_run: bool) -> di
     )
     return {
         "success": result.success,
-        "operation_id": result.operation_id,
-        "data": dict(result.data or {}),
         "error": _error(result),
+        **({"data": result.data} if result.data is not None else {}),
     }
 
 
 @_tool()
 def yasin_start(service: str, confirmation: bool = False, dry_run: bool = False) -> dict[str, Any]:
-    """Start a configured Yasin service. Confirmation is required unless dry_run is true."""
+    """Start a supervised service. Requires confirmation unless dry_run is true."""
     return _mutate("start", service, confirmation, dry_run)
 
 
 @_tool()
 def yasin_stop(service: str, confirmation: bool = False, dry_run: bool = False) -> dict[str, Any]:
-    """Stop a configured Yasin service. Confirmation is required unless dry_run is true."""
+    """Stop a supervised service. Requires confirmation unless dry_run is true."""
     return _mutate("stop", service, confirmation, dry_run)
 
 
 @_tool()
 def yasin_restart(service: str, confirmation: bool = False, dry_run: bool = False) -> dict[str, Any]:
-    """Restart a configured Yasin service. Confirmation is required unless dry_run is true."""
+    """Restart a supervised service. Requires confirmation unless dry_run is true."""
     return _mutate("restart", service, confirmation, dry_run)
 
 
 def main() -> None:
-    """Run the MCP server over stdio for local Hermes integration."""
     if mcp is None:
-        reason = _support.reason if not _support.supported else "mcp SDK extra is not installed"
-        raise RuntimeError(f"MCP bridge unavailable: {reason}")
-    mcp.run(transport="stdio")
+        raise SystemExit(
+            f"MCP bridge unavailable: {_support.reason}"
+            if not _support.supported
+            else "MCP package is not installed; pip install 'yasin-operations[mcp]'"
+        )
+    mcp.run()
 
 
 if __name__ == "__main__":
