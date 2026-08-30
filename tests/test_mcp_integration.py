@@ -24,6 +24,7 @@ EXPECTED_TOOLS = {
     "yasin_status",
     "yasin_health",
     "yasin_doctor",
+    "yasin_monitor",
     "yasin_start",
     "yasin_stop",
     "yasin_restart",
