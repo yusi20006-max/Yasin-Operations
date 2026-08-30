@@ -25,10 +25,13 @@ _F = TypeVar("_F", bound=Callable[..., Any])
 
 
 def _tool() -> Callable[[_F], _F]:
-    """Register an MCP tool on supported runtimes, otherwise keep import safe."""
+    """Register an MCP tool on supported runtimes, otherwise keep import safe.
+
+    MCPServer.tool is a decorator *factory*; it must be called as ``@mcp.tool()``.
+    """
     if mcp is None:
         return lambda function: function
-    return mcp.tool
+    return mcp.tool()
 
 
 def _runtime() -> tuple[Any, Any]:
@@ -90,46 +93,45 @@ def yasin_health() -> dict[str, Any]:
         source="mcp.yasin_health.services",
     )
     service_data = dict(services.data or {})
-    items = list(service_data.get("services", []))
+    service_list = list(service_data.get("services", []))
     return {
         "success": health.success and services.success,
-        "health": dict(health.data or {}),
-        "services": {"items": items, "summary": _service_summary(items)},
-        "resources": resource_snapshot().as_dict(),
+        "health": health.data,
+        "services": {"items": service_list, "summary": _service_summary(service_list)},
+        "resources": resource_snapshot(),
         "error": _error(health) or _error(services),
     }
 
 
 @_tool()
 def yasin_doctor() -> dict[str, Any]:
-    """Run non-invasive local diagnostics for Yasin-Operations."""
-    executor, config = _runtime()
+    """Return Termux/runit diagnostics and local resource snapshot."""
     from yasin_operations.runtime.termux.diagnostics import detect_termux
 
+    _, config = _runtime()
     diagnostics = detect_termux(
         config.service_root,
         sv_path=config.sv_path,
         expected_services=config.service_names,
     )
     return {
-        "success": not diagnostics.issues,
+        "success": True,
         "termux": diagnostics.as_dict(),
-        "resources": resource_snapshot().as_dict(),
+        "resources": resource_snapshot(),
         "configuration": {
             "service_root": config.service_root,
             "sv_path": config.sv_path,
             "service_names": list(config.service_names),
-            "always_on": config.always_on,
         },
     }
 
 
 @_tool()
 def yasin_monitor() -> dict[str, Any]:
-    """Return a single read-only monitoring snapshot (status + health + doctor)."""
-    executor, config = _runtime()
+    """Return the canonical monitoring snapshot (status + health + doctor)."""
     from yasin_operations.runtime.termux.diagnostics import detect_termux
 
+    executor, config = _runtime()
     health = executor.execute(
         Operation(
             name="health_check",
@@ -148,26 +150,30 @@ def yasin_monitor() -> dict[str, Any]:
         actor="hermes",
         source="mcp.yasin_monitor.services",
     )
+    service_data = dict(services.data or {})
+    service_list = list(service_data.get("services", []))
     termux = detect_termux(
         config.service_root,
         sv_path=config.sv_path,
         expected_services=config.service_names,
     )
     snapshot = build_monitoring_snapshot(
-        services_result=services,
-        health_result=health,
-        diagnostics={
-            "termux": termux.as_dict(),
-            "configuration": {
-                "service_root": config.service_root,
-                "sv_path": config.sv_path,
-                "service_names": list(config.service_names),
-                "missing_services": list(config.missing_services()),
-            },
+        services=service_list,
+        health=health.data if isinstance(health.data, dict) else None,
+        diagnostics=termux.as_dict(),
+        resources=resource_snapshot(),
+        configuration={
+            "service_root": config.service_root,
+            "sv_path": config.sv_path,
+            "service_names": list(config.service_names),
+            "missing_services": list(config.missing_services()) if hasattr(config, "missing_services") else [],
         },
-        diagnostics_ok=not termux.issues,
     )
-    return snapshot.as_dict()
+    payload = snapshot.as_dict()
+    payload["success"] = health.success and services.success
+    if not payload["success"]:
+        payload["error"] = _error(health) or _error(services)
+    return payload
 
 
 def _mutate(command: str, service: str, confirmation: bool, dry_run: bool) -> dict[str, Any]:
