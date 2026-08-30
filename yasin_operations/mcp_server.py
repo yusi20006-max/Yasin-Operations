@@ -152,7 +152,7 @@ def yasin_monitor() -> dict[str, Any]:
     )
     service_data = dict(services.data or {})
     service_list = list(service_data.get("services", []))
-    diagnostics = detect_termux(
+    termux = detect_termux(
         config.service_root,
         sv_path=config.sv_path,
         expected_services=config.service_names,
@@ -160,12 +160,13 @@ def yasin_monitor() -> dict[str, Any]:
     snapshot = build_monitoring_snapshot(
         services=service_list,
         health=health.data if isinstance(health.data, dict) else None,
-        diagnostics=diagnostics.as_dict(),
+        diagnostics=termux.as_dict(),
         resources=resource_snapshot(),
         configuration={
             "service_root": config.service_root,
             "sv_path": config.sv_path,
             "service_names": list(config.service_names),
+            "missing_services": list(config.missing_services()) if hasattr(config, "missing_services") else [],
         },
     )
     payload = snapshot.as_dict()
@@ -176,6 +177,29 @@ def yasin_monitor() -> dict[str, Any]:
 
 
 def _mutate(command: str, service: str, confirmation: bool, dry_run: bool) -> dict[str, Any]:
+    if not confirmation and not dry_run:
+        return {
+            "success": False,
+            "error": {
+                "category": "permission_denied",
+                "message": "mutating operation requires explicit confirmation",
+                "details": {"requires_confirmation": True},
+            },
+        }
+    if mcp is None:
+        reason = _support.reason if not _support.supported else "mcp SDK extra is not installed"
+        return {
+            "success": False,
+            "error": {
+                "category": "unavailable_dependency",
+                "message": reason,
+                "details": {
+                    "mcp_supported": _support.supported,
+                    "mcp_installed": _mcp_installed,
+                    "is_termux": _support.is_termux,
+                },
+            },
+        }
     executor, _config = _runtime()
     result = executor.execute(
         _service_operation(command, service),
@@ -186,37 +210,36 @@ def _mutate(command: str, service: str, confirmation: bool, dry_run: bool) -> di
     )
     return {
         "success": result.success,
+        "operation_id": result.operation_id,
+        "data": dict(result.data or {}),
         "error": _error(result),
-        **({"data": result.data} if result.data is not None else {}),
     }
 
 
 @_tool()
 def yasin_start(service: str, confirmation: bool = False, dry_run: bool = False) -> dict[str, Any]:
-    """Start a supervised service. Requires confirmation unless dry_run is true."""
+    """Start a configured Yasin service. Confirmation is required unless dry_run is true."""
     return _mutate("start", service, confirmation, dry_run)
 
 
 @_tool()
 def yasin_stop(service: str, confirmation: bool = False, dry_run: bool = False) -> dict[str, Any]:
-    """Stop a supervised service. Requires confirmation unless dry_run is true."""
+    """Stop a configured Yasin service. Confirmation is required unless dry_run is true."""
     return _mutate("stop", service, confirmation, dry_run)
 
 
 @_tool()
 def yasin_restart(service: str, confirmation: bool = False, dry_run: bool = False) -> dict[str, Any]:
-    """Restart a supervised service. Requires confirmation unless dry_run is true."""
+    """Restart a configured Yasin service. Confirmation is required unless dry_run is true."""
     return _mutate("restart", service, confirmation, dry_run)
 
 
 def main() -> None:
+    """Run the MCP server over stdio for local Hermes integration."""
     if mcp is None:
-        raise SystemExit(
-            f"MCP bridge unavailable: {_support.reason}"
-            if not _support.supported
-            else "MCP package is not installed; pip install 'yasin-operations[mcp]'"
-        )
-    mcp.run()
+        reason = _support.reason if not _support.supported else "mcp SDK extra is not installed"
+        raise RuntimeError(f"MCP bridge unavailable: {reason}")
+    mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":
