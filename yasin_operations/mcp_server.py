@@ -8,6 +8,7 @@ from mcp.server.mcpserver import MCPServer
 from yasin_operations.cli import build_runtime, _error, _service_summary
 from yasin_operations.core.operations.models import Operation, OperationTarget
 from yasin_operations.runtime.resources import snapshot as resource_snapshot
+from yasin_operations.runtime.monitoring import build_monitoring_snapshot
 from yasin_operations.safety.classification import SafetyClass
 
 mcp = MCPServer("yasin-operations")
@@ -104,6 +105,52 @@ def yasin_doctor() -> dict[str, Any]:
             "always_on": config.always_on,
         },
     }
+
+
+@mcp.tool()
+def yasin_monitor() -> dict[str, Any]:
+    """Return a single read-only monitoring snapshot (status + health + doctor)."""
+    executor, config = _runtime()
+    from yasin_operations.runtime.termux.diagnostics import detect_termux
+
+    health = executor.execute(
+        Operation(
+            name="health_check",
+            target=OperationTarget(kind="self", identifier="runtime"),
+            safety_class=SafetyClass.READ_ONLY,
+        ),
+        actor="hermes",
+        source="mcp.yasin_monitor.health",
+    )
+    services = executor.execute(
+        Operation(
+            name="list_services",
+            target=OperationTarget(kind="service", identifier="*"),
+            safety_class=SafetyClass.READ_ONLY,
+        ),
+        actor="hermes",
+        source="mcp.yasin_monitor.services",
+    )
+    termux = detect_termux(
+        config.service_root,
+        sv_path=config.sv_path,
+        expected_services=config.service_names,
+    )
+    snapshot = build_monitoring_snapshot(
+        services_result=services,
+        health_result=health,
+        diagnostics={
+            "termux": termux.as_dict(),
+            "configuration": {
+                "service_root": config.service_root,
+                "sv_path": config.sv_path,
+                "service_names": list(config.service_names),
+                "missing_services": list(config.missing_services()),
+            },
+        },
+        diagnostics_ok=not termux.issues,
+    )
+    return snapshot.as_dict()
 
 
 def _mutate(command: str, service: str, confirmation: bool, dry_run: bool) -> dict[str, Any]:
