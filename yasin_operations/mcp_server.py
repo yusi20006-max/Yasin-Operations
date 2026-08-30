@@ -150,30 +150,27 @@ def yasin_monitor() -> dict[str, Any]:
         actor="hermes",
         source="mcp.yasin_monitor.services",
     )
-    service_data = dict(services.data or {})
-    service_list = list(service_data.get("services", []))
     termux = detect_termux(
         config.service_root,
         sv_path=config.sv_path,
         expected_services=config.service_names,
     )
+    diagnostics_ok = not bool(getattr(termux, "issues", None))
     snapshot = build_monitoring_snapshot(
-        services=service_list,
-        health=health.data if isinstance(health.data, dict) else None,
-        diagnostics=termux.as_dict(),
-        resources=resource_snapshot(),
-        configuration={
-            "service_root": config.service_root,
-            "sv_path": config.sv_path,
-            "service_names": list(config.service_names),
-            "missing_services": list(config.missing_services()) if hasattr(config, "missing_services") else [],
+        services_result=services,
+        health_result=health,
+        diagnostics={
+            "termux": termux.as_dict(),
+            "configuration": {
+                "service_root": config.service_root,
+                "sv_path": config.sv_path,
+                "service_names": list(config.service_names),
+                "missing_services": list(config.missing_services()) if hasattr(config, "missing_services") else [],
+            },
         },
+        diagnostics_ok=diagnostics_ok,
     )
-    payload = snapshot.as_dict()
-    payload["success"] = health.success and services.success
-    if not payload["success"]:
-        payload["error"] = _error(health) or _error(services)
-    return payload
+    return snapshot.as_dict()
 
 
 def _mutate(command: str, service: str, confirmation: bool, dry_run: bool) -> dict[str, Any]:
