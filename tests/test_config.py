@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from yasin_operations.config.config import (
+    DEFAULT_ECOSYSTEM_SERVICE_NAMES,
     DEFAULT_SERVICE_ROOT,
     DEFAULT_SV_PATH,
     InvalidConfigurationError,
@@ -80,10 +81,49 @@ def test_rejects_invalid_service_names():
         OperationsConfig(service_names=(" yasin-ai",))
 
 
-def test_load_config_uses_defaults_when_env_empty():
+def test_load_config_uses_ecosystem_defaults_when_env_unset():
     with patch.dict(os.environ, {}, clear=True):
         config = load_config()
-    assert config == OperationsConfig()
+    assert OperationsConfig().service_names == ()
+    assert config.service_names == DEFAULT_ECOSYSTEM_SERVICE_NAMES
+    assert sorted([d.name for d in config.service_definitions()]) == [
+        "yasin-agent",
+        "yasin-core",
+        "yasin-hub",
+        "yasin-mcp",
+        "yasin-relay",
+    ]
+
+
+def test_load_config_preserves_intentional_empty_env_service_names():
+    with patch.dict(os.environ, {"YASIN_OPERATIONS_SERVICE_NAMES": ""}, clear=True):
+        config = load_config()
+    assert config.service_names == ()
+
+
+def test_runtime_registry_and_non_fabricated_health_for_canonical_services(tmp_path):
+    from yasin_operations.runtime.local.process_backend import LocalProcessInspector
+    from yasin_operations.runtime.termux.runit import RunitServiceBackend
+
+    with patch.dict(os.environ, {}, clear=True):
+        config = load_config()
+    backend = RunitServiceBackend(
+        LocalProcessInspector(),
+        service_root=str(tmp_path / "service_root"),
+        definitions=config.service_definitions(),
+    )
+    statuses = backend.list_services()
+    names = [s.name for s in statuses]
+    assert sorted(names) == [
+        "yasin-agent",
+        "yasin-core",
+        "yasin-hub",
+        "yasin-mcp",
+        "yasin-relay",
+    ]
+    for s in statuses:
+        assert s.health_state in {"missing", "unavailable"}
+        assert s.state.value not in {"running", "healthy"}
 
 
 def test_load_config_environment_overrides_defaults():
