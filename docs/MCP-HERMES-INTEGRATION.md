@@ -32,6 +32,7 @@ The bridge exposes:
 - `yasin_status` — read-only service state and aggregate summary.
 - `yasin_health` — read-only runtime health, service state and resources.
 - `yasin_doctor` — read-only Termux/runit diagnostics.
+- `yasin_monitor` — read-only combined monitoring snapshot (status + health + doctor).
 - `yasin_start` — mutating; explicit `confirmation=true` is required unless
   `dry_run=true`.
 - `yasin_stop` — mutating; explicit `confirmation=true` is required unless
@@ -63,8 +64,8 @@ On the target Termux device, install MCP using one of the supported paths in
 `docs/TERMUX-MCP-COMPATIBILITY.md`, then configure Hermes to launch the local
 stdio command above. The smoke test is successful when Hermes can:
 
-1. discover the six tools;
-2. call `yasin_status`, `yasin_health` and `yasin_doctor` successfully;
+1. discover the tools (including `yasin_monitor`);
+2. call `yasin_status`, `yasin_health`, `yasin_doctor` and `yasin_monitor` successfully;
 3. receive a structured `permission_denied` result for an unconfirmed
    `yasin_restart`, `yasin_start` or `yasin_stop`; and
 4. perform a confirmed mutation only when the normal Operations safety policy

@@ -99,7 +99,10 @@ def test_runit_status_discovery_isolated_per_service(tmp_path: Path):
 
     services = {item.name: item for item in backend.list_services()}
     assert services["demo"].state is ServiceState.STOPPED
-    assert services["broken"].state is ServiceState.FAILED
+    # Missing service directory is isolated and classified as missing, not failed.
+    assert services["broken"].state is ServiceState.UNKNOWN
+    assert services["broken"].health_state == "missing"
+    assert services["broken"].extra.get("presence") == "missing"
 
 
 def test_local_backend_does_not_report_fast_crash_as_running(tmp_path: Path):
