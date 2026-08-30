@@ -71,21 +71,58 @@ class FakeProbe(ServiceProbe):
         )
 
 
-def _run_json(command: list[str]) -> tuple[bool, dict[str, Any], str]:
+def _run_cli_command(command_name: str) -> tuple[bool, dict[str, Any], str]:
+    command = [sys.executable, "-m", "yasin_operations", "--json", command_name]
     completed = subprocess.run(command, text=True, capture_output=True, check=False)
     output = completed.stdout.strip()
+    stderr = completed.stderr.strip()
     try:
         payload = json.loads(output)
     except json.JSONDecodeError as exc:
-        return False, {}, f"invalid JSON: {exc}; stderr={completed.stderr.strip()!r}"
-    return completed.returncode in (0, 1, 2) and payload.get("success") is True, payload, completed.stderr.strip()
+        return False, {}, f"invalid JSON: {exc}; stderr={stderr!r}"
+
+    if not isinstance(payload, dict):
+        return False, {}, f"payload is not a JSON object; stderr={stderr!r}"
+
+    if payload.get("command") != command_name or payload.get("schema_version") != 1:
+        return False, payload, f"malformed envelope for {command_name}; stderr={stderr!r}"
+
+    if command_name == "doctor":
+        if completed.returncode not in (0, 1):
+            return False, payload, f"unexpected exit code {completed.returncode}; stderr={stderr!r}"
+        if not isinstance(payload.get("success"), bool):
+            return False, payload, f"malformed doctor success field; stderr={stderr!r}"
+        if not isinstance(payload.get("termux"), dict) or not isinstance(payload.get("configuration"), dict):
+            return False, payload, f"malformed doctor payload structure; stderr={stderr!r}"
+        if payload["success"] is False:
+            err = payload.get("error")
+            if not isinstance(err, dict) or err.get("category") != "diagnostics":
+                return False, payload, f"doctor failed with non-diagnostic error: {err}; stderr={stderr!r}"
+        return True, payload, stderr
+
+    if completed.returncode not in (0, 1, 2):
+        return False, payload, f"unexpected exit code {completed.returncode}; stderr={stderr!r}"
+
+    if payload.get("success") is not True:
+        return False, payload, f"command {command_name} payload success is not True; stderr={stderr!r}"
+
+    if command_name == "status":
+        data = payload.get("data")
+        if not isinstance(data, dict) or "services" not in data or "summary" not in data:
+            return False, payload, f"malformed status payload structure; stderr={stderr!r}"
+
+    if command_name == "health":
+        if not isinstance(payload.get("health"), dict) or not isinstance(payload.get("services"), dict):
+            return False, payload, f"malformed health payload structure; stderr={stderr!r}"
+
+    return True, payload, stderr
 
 
 def check_cli() -> list[Result]:
     results: list[Result] = []
     commands = (("doctor-json", "doctor"), ("status-json", "status"), ("health-json", "health"))
     for name, command in commands:
-        ok, payload, detail = _run_json([sys.executable, "-m", "yasin_operations", "--json", command])
+        ok, payload, detail = _run_cli_command(command)
         if not ok:
             results.append(Result(name, "FAIL", detail or str(payload)))
         else:
