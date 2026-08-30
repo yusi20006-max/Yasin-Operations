@@ -1,6 +1,7 @@
 """MCP stdio bridge for Hermes control of Yasin-Operations."""
 from __future__ import annotations
 
+import importlib.util
 from typing import Any, Callable, TypeVar
 
 from yasin_operations.cli import build_runtime, _error, _service_summary
@@ -11,8 +12,9 @@ from yasin_operations.runtime.monitoring import build_monitoring_snapshot
 from yasin_operations.safety.classification import SafetyClass
 
 _support = mcp_runtime_support()
+_mcp_installed = importlib.util.find_spec("mcp") is not None
 
-if _support.supported:
+if _support.supported and _mcp_installed:
     from mcp.server.mcpserver import MCPServer
 
     mcp: Any = MCPServer("yasin-operations")
@@ -179,12 +181,17 @@ def _mutate(command: str, service: str, confirmation: bool, dry_run: bool) -> di
             },
         }
     if mcp is None:
+        reason = _support.reason if not _support.supported else "mcp SDK extra is not installed"
         return {
             "success": False,
             "error": {
                 "category": "unavailable_dependency",
-                "message": _support.reason,
-                "details": {"mcp_supported": False, "is_termux": _support.is_termux},
+                "message": reason,
+                "details": {
+                    "mcp_supported": _support.supported,
+                    "mcp_installed": _mcp_installed,
+                    "is_termux": _support.is_termux,
+                },
             },
         }
     executor, _config = _runtime()
@@ -224,7 +231,8 @@ def yasin_restart(service: str, confirmation: bool = False, dry_run: bool = Fals
 def main() -> None:
     """Run the MCP server over stdio for local Hermes integration."""
     if mcp is None:
-        raise RuntimeError(f"MCP bridge unavailable: {_support.reason}")
+        reason = _support.reason if not _support.supported else "mcp SDK extra is not installed"
+        raise RuntimeError(f"MCP bridge unavailable: {reason}")
     mcp.run(transport="stdio")
 
 
