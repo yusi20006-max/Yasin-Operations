@@ -88,7 +88,24 @@ class RunitServiceBackend(ServiceBackend):
             # One bad service must not hide every other service from diagnostics.
             try:
                 results.append(self.get_status(name))
-            except (ServiceNotFoundError, ServiceCommandError) as exc:
+            except ServiceNotFoundError as exc:
+                d = self._defs[name]
+                # Missing optional service directory is not a product failure.
+                results.append(
+                    ServiceInfo(
+                        name=name,
+                        state=ServiceState.UNKNOWN,
+                        desired_state=d.desired_state,
+                        health_state="missing",
+                        message=str(exc)[:200],
+                        extra={
+                            "adapter": "termux-runit",
+                            "error": type(exc).__name__,
+                            "presence": "missing",
+                        },
+                    )
+                )
+            except ServiceCommandError as exc:
                 d = self._defs[name]
                 results.append(
                     ServiceInfo(
@@ -97,7 +114,7 @@ class RunitServiceBackend(ServiceBackend):
                         desired_state=d.desired_state,
                         health_state="failed",
                         message=str(exc)[:200],
-                        extra={"adapter": "termux-runit", "error": type(exc).__name__},
+                        extra={"adapter": "termux-runit", "error": type(exc).__name__, "presence": "present"},
                     )
                 )
         return results
@@ -111,7 +128,25 @@ class RunitServiceBackend(ServiceBackend):
                 desired_state=d.desired_state,
                 health_state="unavailable",
                 message="runit adapter unavailable",
-                extra={"adapter": "termux-runit", "service_dir": d.service_dir or str(self._root / name)},
+                extra={
+                    "adapter": "termux-runit",
+                    "service_dir": d.service_dir or str(self._root / name),
+                    "presence": "backend_unavailable",
+                },
+            )
+        service_dir = d.service_dir or str(self._root / name)
+        if not Path(service_dir).is_dir():
+            return ServiceInfo(
+                name=name,
+                state=ServiceState.UNKNOWN,
+                desired_state=d.desired_state,
+                health_state="missing",
+                message=f"service directory not found: {service_dir}",
+                extra={
+                    "adapter": "termux-runit",
+                    "service_dir": service_dir,
+                    "presence": "missing",
+                },
             )
         result = self._sv(d, "status")
         state = self._normalize_status(result.stdout, result.stderr, result.returncode)
@@ -126,7 +161,11 @@ class RunitServiceBackend(ServiceBackend):
             desired_state=d.desired_state,
             health_state=health_state,
             message=output[:200] or None,
-            extra={"adapter": "termux-runit", "service_dir": d.service_dir or str(self._root / name)},
+            extra={
+                "adapter": "termux-runit",
+                "service_dir": service_dir,
+                "presence": "present",
+            },
         )
 
     @staticmethod
