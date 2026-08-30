@@ -1,7 +1,7 @@
 """MCP server optional integration tests.
 
 These tests require the optional ``mcp`` extra. They exercise a real import
-of the MCP SDK and the Yasin-Operations FastMCP bridge. They must not mask
+of the MCP SDK 2.x and the Yasin-Operations MCP bridge. They must not mask
 ImportError; if cryptography/MCP cannot load on the runtime, the tests fail
 when the extra is installed.
 """
@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(not mcp_available, reason="mcp extra is not inst
 def test_mcp_sdk_imports_successfully() -> None:
     """Real import of the MCP SDK must succeed when the extra is present."""
     import mcp  # noqa: F401
-    from mcp.server.fastmcp import FastMCP  # noqa: F401
+    from mcp.server.mcpserver import MCPServer  # noqa: F401
 
     assert mcp is not None
 
