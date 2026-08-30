@@ -29,6 +29,7 @@ yasin_operations/
     logging/              Structured audit trail
     gateway.py            Optional local JSONL Operations Gateway
     gateway_cli.py        Gateway command implementation
+    mcp_server.py         Optional stdio MCP bridge for Hermes
     entrypoint.py         Installed CLI router
     version.py            Authoritative package version
     cli.py                 Standalone operations CLI
@@ -78,13 +79,14 @@ The gateway is intentionally local and optional. Existing CLI commands,
 runtime services, and standalone operation remain unchanged when it is
 not used.
 
-**Transport boundary:** the JSONL gateway is **not an MCP server**. There
-is currently no MCP implementation in Yasin-Operations and Hermes MCP
-configuration is an external client concern. A future MCP integration,
-if required by the ecosystem architecture, must be introduced as a
-separate protocol adapter with its own contract, discovery, tool-call,
-and security tests. JSONL verification must not be represented as MCP
-verification.
+**Transport boundary:** the local JSONL gateway remains the canonical
+component-scoped external transport. An optional **stdio MCP bridge**
+(`yasin_operations.mcp_server`) is also available for Hermes and other
+MCP clients. MCP is never a core dependency; install the optional extra
+with `pip install -e ".[mcp]"` or see `requirements-mcp.txt` and
+`docs/TERMUX-MCP-COMPATIBILITY.md` for Termux/Python 3.14 notes.
+JSONL verification must not be represented as MCP verification, and
+MCP verification must not be claimed from JSONL tests alone.
 
 ## Termux / runit
 
@@ -119,64 +121,18 @@ python scripts/production_acceptance.py --json
 python scripts/production_acceptance.py --live --json
 ```
 
-The normal CI workflow covers the non-live acceptance surface. Live
-service health is an operator/host verification step and must never be
-inferred from hosted CI results.
+The normal CI workflow covers hosted verification. Live Termux/runit
+acceptance remains an operator responsibility on the target device.
 
-Release-readiness checks are available with:
+## Optional MCP (Hermes)
 
 ```sh
-python scripts/release_readiness.py --json
+pip install -e ".[mcp]"
+python -m yasin_operations.mcp_server
 ```
 
-The canonical release procedure and the distinction between hosted CI
-and live host verification are defined in `docs/RELEASE_PROCESS.md`.
+On Termux Python 3.14 see `docs/TERMUX-MCP-COMPATIBILITY.md`.
 
-## Verification evidence policy
-
-Documentation deliberately distinguishes three evidence classes:
-
-1. **Repository evidence** — source code, tests, packaging metadata, and
-   checked-in acceptance/release artifacts.
-2. **Hosted CI evidence** — workflow results produced by GitHub Actions;
-   these do not prove the health of a user's local services.
-3. **Live host evidence** — operator-run Termux/runit verification; this
-   is time-bound and must not be presented as a current health claim
-   unless a fresh live run is available.
-
-The repository does not treat the presence of a Hermes CLI or Hermes MCP
-command as evidence that Yasin-Operations implements MCP connectivity.
-
-## Documentation map
-
-- `docs/OPERATIONS-RUNBOOK.md` — operator workflows for status, health,
-  diagnostics and lifecycle actions.
-- `docs/TRANSPORT-BOUNDARY.md` — external transport and trust boundary,
-  including the explicit JSONL-vs-MCP distinction.
-- `docs/ARCHITECTURE-RECONCILIATION.md` — architecture/source-of-truth
-  reconciliation.
-- `docs/AUTHORIZATION_MODEL.md` — authorization and safety model.
-- `docs/EXECUTION-SEMANTICS.md` — retries, cancellation, idempotency,
-  timeouts and resource limits.
-- `docs/GATEWAY-INTEGRATION-TEST-MATRIX.md` — external gateway test
-  matrix and adversarial verification.
-- `docs/RELEASE_PROCESS.md` — canonical release procedure.
-- `docs/RELEASE_READINESS_v0.1.0.md` — release evidence record.
-- `docs/PRODUCTION-DOCUMENTATION-RECONCILIATION.md` — current
-  documentation/source-of-truth reconciliation record.
-
-## Status
-
-The original architecture issues (#1–#7) are implemented. Subsequent
-production-readiness work has hardened configuration, CLI contracts,
-packaging, diagnostics, lifecycle handling, resource portability,
-authoritative runit state normalization, execution semantics, ecosystem
-adapter contracts, gateway integration, acceptance testing, release
-readiness, and CI acceptance gating.
-
-Yasin-Operations `v0.1.0` is a repository-local standalone release
-candidate/readiness state. This statement is **not** an ecosystem-wide
-architecture certification. YASIN-DOCS remains the architectural source
-of truth for cross-project status and must be reconciled independently.
-
-It does not require any target Yasin repository for core operation.
+An optional stdio MCP bridge is provided for Hermes integration. The
+presence of a Hermes CLI alone is not treated as live connectivity evidence;
+use the MCP bridge and the documented smoke tests.

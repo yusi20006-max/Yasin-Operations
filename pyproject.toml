@@ -20,6 +20,9 @@ dev = [
 test = [
     "pytest>=7.0.0",
 ]
+mcp = [
+    "mcp>=2,<3",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

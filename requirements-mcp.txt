@@ -1,1 +1,20 @@
+# Optional MCP integration dependencies.
+# Install with: pip install -e ".[mcp]"
+# or: pip install -r requirements-mcp.txt
+#
+# Termux / Android note:
+# The MCP SDK depends on cryptography, whose abi3 Rust extension on native
+# Termux Python 3.14 currently fails to resolve CPython symbols (PyLong_Type,
+# PyModule_Type) unless the shared library is linked correctly.
+#
+# Supported Termux installation paths (choose one):
+# 1. Preferred: use Termux package which patches the extension:
+#      pkg install python-cryptography
+#      pip install -r requirements-mcp.txt
+# 2. LD_PRELOAD workaround:
+#      export LD_PRELOAD=$PREFIX/lib/libpython3.14.so
+#      pip install -r requirements-mcp.txt
+# 3. proot-distro Debian (Python 3.13) for hosted-style Linux runtime.
+#
+# Core Yasin-Operations never requires MCP. MCP remains fully optional.
 mcp>=2,<3

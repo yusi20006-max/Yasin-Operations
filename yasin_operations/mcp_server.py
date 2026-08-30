@@ -3,14 +3,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from yasin_operations.cli import build_runtime, _error, _service_summary
 from yasin_operations.core.operations.models import Operation, OperationTarget
 from yasin_operations.runtime.resources import snapshot as resource_snapshot
 from yasin_operations.safety.classification import SafetyClass
 
-mcp = FastMCP("yasin-operations")
+mcp = MCPServer("yasin-operations")
 
 
 def _runtime() -> tuple[Any, Any]:
