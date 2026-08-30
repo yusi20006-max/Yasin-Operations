@@ -1,34 +1,40 @@
-# Yasin-Operations operator runbook
+# Yasin-Operations runbook
 
-## Operating model
+Operational notes for the standalone Operations component. This document does
+not replace YASIN-DOCS architecture authority.
 
-Yasin-Operations is optional. Existing Yasin services must not require it to start, run, or stop. The Core owns typed operations and safety policy; adapters provide platform/service boundaries.
+## Local commands
 
-## First verification
+```sh
+python -m yasin_operations doctor
+python -m yasin_operations status
+python -m yasin_operations health
+python -m yasin_operations monitor
+python -m yasin_operations restart <service> --dry-run
+python -m yasin_operations restart <service> --confirm
+yasin-operations --version
+```
 
-1. Run the complete test suite with `python -m pytest -q`.
-2. Run `python -m yasin_operations doctor` on the target host.
-3. Run `python -m yasin_operations status` and confirm only intentionally registered services appear.
-4. Run `python -m yasin_operations health`.
-5. Run the canonical read-only acceptance harness with `python scripts/production_acceptance.py`.
-6. On a Termux host, add `--live` to include read-only `sv status` checks for the configured services.
-7. Validate a mutation with `--dry-run` before using `--confirm`.
+Use `--json` for machine-readable output.
 
-## Acceptance harness
+## Production acceptance
 
-The canonical acceptance command is:
+Hosted/offline acceptance:
 
 ```sh
 python scripts/production_acceptance.py
+python scripts/production_acceptance.py --json
 ```
-
-The harness validates the current Hermes typed request contract, all three ecosystem adapter contracts with an injected fake probe, CLI JSON execution, portable repository-search checks, and deterministic PASS/FAIL/SKIP reporting.
 
 Live service inspection is opt-in and remains read-only:
 
 ```sh
 python scripts/production_acceptance.py --live
+python scripts/production_acceptance.py --live --json
 ```
+
+See `docs/TERMUX-LIVE-ACCEPTANCE.md` for PASS/FAIL/SKIP/BLOCKED classification,
+optional-service handling, and Termux operator commands.
 
 A runit result beginning with `run:` is interpreted as actual `running`. A result beginning with `down:` is actual `stopped`, even when the text says `normally up`. `fail:` and `timeout:` are actual `failed`. Desired state is not substituted for actual state. Therefore a service configured as desired `running` but reported by runit as `down: ... normally up` is a genuine runtime failure for a live acceptance run, not a harness success.
 
@@ -78,14 +84,6 @@ If a target service fails, the Operations adapter reports the failure; it does n
 | Operations stopped | Existing services continue independently |
 | Operations restarted | Adapter/runtime state is rebuilt from configuration |
 | Target service stopped | Status/health reports stopped or unhealthy |
-| Target service unavailable | Adapter returns structured unavailable response |
-| Adapter failure | Core remains importable and other adapters remain usable |
-| Mutation without confirmation | Denied and audited |
-| Dry-run mutation | Plan returned; target untouched |
-| Runit unavailable | Termux diagnostics report the missing supervisor; no mutation is attempted |
-
-## Termux always-on service
-
-The optional service definition is under `deploy/termux/runit/yasin-operations/`. It runs the persistent Operations daemon under `runit`. The file must be executable after installation.
-
-The service is intentionally independent of existing Hermes, Yasin-AI, YasinPress, and YasinRelay service definitions.
+| Target service failed | Status/health reports failed; other services remain observable |
+| Optional service directory absent | Live acceptance SKIP; not a product FAIL |
+| Service root / sv missing | Live acceptance BLOCKED (environment) |
