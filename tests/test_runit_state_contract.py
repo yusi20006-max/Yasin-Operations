@@ -10,14 +10,11 @@ from yasin_operations.runtime.termux.runit import RunitServiceBackend, RunitServ
 
 
 class FakeInspector:
-    def __init__(self, pids: dict[str, list[int]] | None = None) -> None:
-        self.pids = pids or {}
+    def __init__(self, mapping=None):
+        self.mapping = mapping or {}
 
-    def find_by_name(self, pattern: str):
-        return [type("P", (), {"pid": pid})() for pid in self.pids.get(pattern, [])]
-
-    def is_alive(self, pid: int) -> bool:
-        return pid in {p.pid for values in self.pids.values() for p in [type("P", (), {"pid": pid})()]}
+    def find_by_name(self, pattern):
+        return self.mapping.get(pattern, [])
 
 
 def _backend(tmp_path, monkeypatch, output: str, returncode: int = 0):
@@ -78,12 +75,10 @@ def test_unknown_status_is_not_assumed_running(tmp_path, monkeypatch):
 
 def test_summary_marks_mixed_running_and_down_as_degraded():
     summary = _service_summary([
-        {"name": "hermes-agent", "state": "running"},
-        {"name": "yasin-ai", "state": "running"},
-        {"name": "yasinpress", "state": "stopped"},
-        {"name": "yasinrelay", "state": "running"},
+        {"name": "a", "state": "running"},
+        {"name": "b", "state": "stopped"},
     ])
-    assert summary["counts"]["running"] == 3
+    assert summary["counts"]["running"] == 1
     assert summary["counts"]["stopped"] == 1
     assert summary["health"] == "degraded"
     assert summary["exit_code"] == STATUS_EXIT_DEGRADED
@@ -104,3 +99,32 @@ def test_status_payload_remains_json_serializable(tmp_path, monkeypatch):
         "pid": info.pid,
     }
     assert json.loads(json.dumps(payload))["state"] == "stopped"
+
+
+def test_missing_service_directory_is_not_failed(tmp_path, monkeypatch):
+    """Optional services without a service directory are missing, not product-failed."""
+    service_root = tmp_path / "service"
+    service_root.mkdir()
+    sv = tmp_path / "sv"
+    sv.write_text("#!/bin/sh\n")
+    sv.chmod(sv.stat().st_mode | stat.S_IXUSR)
+
+    monkeypatch.setattr("yasin_operations.runtime.termux.runit.os.access", lambda path, mode: True)
+
+    class LocalFakeInspector:
+        def find_by_name(self, pattern):
+            return []
+
+    backend = RunitServiceBackend(
+        LocalFakeInspector(),
+        service_root=str(service_root),
+        sv_path=str(sv),
+        definitions=[RunitServiceDefinition("hermes-agent", process_pattern="hermes")],
+    )
+    info = backend.get_status("hermes-agent")
+    assert info.state is ServiceState.UNKNOWN
+    assert info.health_state == "missing"
+    assert info.extra.get("presence") == "missing"
+    listed = backend.list_services()
+    assert len(listed) == 1
+    assert listed[0].health_state == "missing"
