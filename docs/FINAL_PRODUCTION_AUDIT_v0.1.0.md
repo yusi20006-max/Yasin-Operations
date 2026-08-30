@@ -1,3 +1,5 @@
+> **Supersession notice (Monitoring Program P4):** Monitoring, MCP, and Termux live-acceptance closure evidence for the Monitoring Completion Program is recorded in `docs/FINAL_PRODUCTION_CLOSURE_MONITORING_P4.md` (Issue #157). This P3.1 document remains historical for its original scope.
+
 # Yasin-Operations v0.1.0 — Final Production Audit
 
 ## Audit scope
