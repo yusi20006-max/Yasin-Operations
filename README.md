@@ -116,6 +116,8 @@ runit is configured to keep it supervised.
 
 Canonical release procedure and readiness evidence:
 
+- `docs/FINAL_PRODUCTION_CLOSURE_MONITORING_P4.md` (Monitoring Program P4 closure)
+
 - `docs/RELEASE_PROCESS.md`
 - `docs/RELEASE_READINESS_v0.1.0.md`
 
