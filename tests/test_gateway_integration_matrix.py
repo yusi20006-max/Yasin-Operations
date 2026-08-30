@@ -152,4 +152,7 @@ def test_repository_does_not_advertise_jsonl_as_mcp():
 
     root = Path(__file__).parents[1]
     text = (root / "docs" / "TRANSPORT-BOUNDARY.md").read_text(encoding="utf-8").lower()
-    assert "no mcp server implementation" in text
+    # JSONL is canonical; MCP is an optional stdio bridge, not a rename of JSONL.
+    assert "jsonl" in text and "canonical" in text
+    assert "the jsonl protocol is not described as mcp" in text
+    assert "optional" in text and "mcp" in text

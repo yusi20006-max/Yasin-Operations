@@ -113,6 +113,11 @@ runit is configured to keep it supervised.
 
 ## Production acceptance and release readiness
 
+Canonical release procedure and readiness evidence:
+
+- `docs/RELEASE_PROCESS.md`
+- `docs/RELEASE_READINESS_v0.1.0.md`
+
 The canonical read-only acceptance harness is:
 
 ```sh

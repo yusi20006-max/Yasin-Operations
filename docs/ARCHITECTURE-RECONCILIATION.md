@@ -46,7 +46,7 @@ No runtime behavior is changed by this document.
 | Ecosystem adapters | `adapters/ecosystem/` | Future integrations must be optional and evidence-backed | **Implemented as optional adapters / aligned** |
 | Hermes adapter | `adapters/hermes/` | Hermes is optional; integration must use an adapter | **Adapter implemented; live Hermes integration not claimed** |
 | JSONL gateway | `gateway.py`, `gateway_cli.py` | Transport/integration boundary may be introduced without creating mandatory dependency | **Implemented as local optional transport** |
-| MCP | No MCP server implementation in Yasin-Operations package | ADR-0012 does not require MCP | **Not implemented / not a current architectural requirement** |
+| MCP | Optional stdio MCP bridge (`yasin_operations.mcp_server`) behind the `[mcp]` extra | ADR-0012 does not require MCP; optional integration only | **Optional adapter implemented; not a core dependency** |
 | Yasin-AI dependency | No direct package dependency | Yasin-AI remains canonical AI platform | **Aligned** |
 | YasinPress dependency | No direct package dependency | YasinPress owns publishing/news domain | **Aligned** |
 | YasinRelay dependency | No direct package dependency | YasinRelay owns relay/feed transport | **Aligned** |
@@ -132,7 +132,7 @@ The existence of `adapters/hermes/` means an adapter boundary exists. It does **
 
 ### 6.3 MCP
 
-No MCP server/client implementation is part of the current Yasin-Operations package. Hermes has its own MCP facility, but that does not make Yasin-Operations an MCP server. Future MCP work must be tracked as a separate integration decision rather than inferred from the JSONL gateway.
+An optional stdio MCP bridge (`yasin_operations.mcp_server`) is available behind the `[mcp]` optional dependency. Hermes has its own MCP facility; that does not make Yasin-Operations an MCP server by default, and the JSONL gateway is not described as MCP. MCP remains optional, never a core runtime dependency, and must not be inferred solely from JSONL tests.
 
 ### 6.4 Ecosystem adapters
 
@@ -142,7 +142,7 @@ The Yasin-AI/YasinPress/YasinRelay adapters are evidence of optional interface s
 
 | Finding | Severity | Follow-up |
 |---|---|---|
-| MCP is not implemented in Yasin-Operations | Informational for current ADR; integration gap only if MCP is explicitly required | #120 |
+| Optional MCP bridge exists behind the `[mcp]` extra; core remains independent | Informational; keep MCP optional | #120 / #154 |
 | JSONL gateway is local-only and not an MCP transport | Informational | #120 |
 | Mutation authorization must remain centralized in Executor/SafetyPolicy | High architectural invariant | #123 |
 | Request replay/idempotency semantics need explicit production contract | High | #124 |
