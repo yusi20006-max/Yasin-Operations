@@ -12,6 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+SRC_DIR = ROOT_DIR / "src"
+SEARCH_DIR = SRC_DIR if SRC_DIR.is_dir() else ROOT_DIR
+if str(SEARCH_DIR) not in sys.path:
+    sys.path.insert(0, str(SEARCH_DIR))
+
 from yasin_operations.adapters.ecosystem.contracts import ServiceProbe, ServiceSnapshot
 from yasin_operations.adapters.ecosystem.yasin_ai import YasinAIAdapter
 from yasin_operations.adapters.ecosystem.yasin_press import YasinPressAdapter
@@ -73,7 +79,10 @@ class FakeProbe(ServiceProbe):
 
 def _run_cli_command(command_name: str) -> tuple[bool, dict[str, Any], str]:
     command = [sys.executable, "-m", "yasin_operations", "--json", command_name]
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    env = os.environ.copy()
+    pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{SEARCH_DIR}{os.pathsep}{pythonpath}" if pythonpath else str(SEARCH_DIR)
+    completed = subprocess.run(command, cwd=ROOT_DIR, env=env, text=True, capture_output=True, check=False)
     output = completed.stdout.strip()
     stderr = completed.stderr.strip()
     try:
@@ -175,8 +184,7 @@ def check_live_services(services: tuple[str, ...]) -> list[Result]:
 def repository_search() -> list[Result]:
     rg = shutil.which("rg")
     if rg is None: return [Result("repository-search", "SKIP", "rg executable not found")]
-    root = Path(__file__).resolve().parents[1]
-    completed = subprocess.run([rg, "-n", "hermes|mcp|endpoint|transport", str(root / "yasin_operations"), "--glob", "*.py"], text=True, capture_output=True, check=False)
+    completed = subprocess.run([rg, "-n", "hermes|mcp|endpoint|transport", str(SEARCH_DIR / "yasin_operations"), "--glob", "*.py"], text=True, capture_output=True, check=False)
     return [Result("repository-search", "PASS" if completed.returncode in (0, 1) else "FAIL", "portable rg invocation")]
 
 
