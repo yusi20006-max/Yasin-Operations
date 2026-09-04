@@ -1,17 +1,22 @@
-# Investigation
+# Investigation — Issue #174
 
-## Baseline
-The current YasinHub `main` tip is `bb99859568d177074c777097e469018ed98bdbfd`, containing the Phase 4 truthful PWA ↔ Control Plane integration.
+## Final software baseline
+- YasinRelay canonical Termux launcher: merged `d977541`.
+- Hub↔Relay lifecycle E2E: PR #169 / merge `57c52df`.
+- Phase 3 device contract preparation: PR #171 / merge `7904a22`.
+- PWA↔Control Plane truthful integration: PR #173 / merge `bb99859`.
+- Yasin-Agent Phase 5: PR #55 / merge `248f2fd`.
+- Yasin-Agent Phase 6 hardening: PR #58 / merge `f348134`.
+- Final software-side acceptance regression: PR #175 / merge `21e306058dc88bd82fff1f4e178c206106c5d077`.
 
-The Hub already contains real-process lifecycle regressions covering canonical Relay start, START/STOP/START/RESTART PID behavior, early startup failure, crash reconciliation, foreign-PID protection, Hub restart reconciliation, and `shell=False` spawning.
+## Acceptance result
+The merged final regression checks:
+1. canonical Relay launcher command and `yasinrelay.cli` process identity;
+2. Hub spawn safety (`shell=False`) and process identity verification;
+3. real child-process START → STOP → START → RESTART with PID replacement and cleanup;
+4. PWA rendering of backend PID and rejection of optimistic lifecycle state unless `success===true`.
 
-Yasin-Agent Phase 6 is already complete under canonical Issue #57 / PR #58, not duplicate Issue #56.
+PR CI run #206 completed successfully on Python 3.9–3.14-dev.
 
-## Decision
-Issue #56 in Yasin-Agent was closed as duplicate. Final acceptance is consolidated under YasinHub #174.
-
-## Remaining verification
-- CI execution for the new final acceptance test.
-- Post-merge verification on the resulting Hub main commit.
-- Physical Termux/Android ARM64 acceptance remains deferred until a real device is available.
-- Credentialed source/fetch/publish remains operator-dependent and must not be simulated.
+## Remaining boundary
+Physical Android/Termux ARM64 acceptance and credentialed source/fetch/publish were not executed. They require the real target device plus operator-provided runtime configuration. They remain explicitly deferred rather than simulated.
