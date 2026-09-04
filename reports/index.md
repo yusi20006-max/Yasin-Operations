@@ -20,10 +20,11 @@ Canonical persistent report store for autonomous Yasin engineering work.
 
 | Issue | Repository | Branch | PR | Status | Updated |
 |-------|------------|--------|----|--------|---------|
-| #174 Final ecosystem E2E acceptance | YasinHub | feat/final-ecosystem-e2e-174 | #175 MERGED (`21e3060`) | **SOFTWARE E2E COMPLETE — DEVICE ACCEPTANCE DEFERRED** — `reports/completed/issue-174/final-report.md` | 2026-09-05 |
+| #174 Final ecosystem E2E acceptance | YasinHub | feat/final-ecosystem-e2e-174 + device 25483/26027 | #175 MERGED (`21e3060`) + device 2026-09-05 | **PARTIAL — REAL DEVICE E2E WITH VERIFIED PIDS, BLOCKED PUBLISH, DEFECTS RECORDED** — `reports/completed/issue-174/final-report.md` (16 checkpoints, Hub 25483, Agent 26027, 471/478 tests) | 2026-09-05 |
 | #57 Phase 6 production hardening | Yasin-agent | feat/phase6-production-hardening | #58 MERGED (`f348134`) | COMPLETE — DEVICE ACCEPTANCE DEFERRED — `reports/completed/issue-57/final-report.md` | 2026-09-04 |
 | #54 Phase 5 Agent↔Hub Integration | Yasin-agent | feat/phase5-yasin-agent-integration | #55 MERGED (`248f2fd`) | COMPLETED — `reports/completed/issue-54/final-report.md` | 2026-09-04 |
 | #172 Phase 4 PWA Control Plane | YasinHub | feat/phase4-pwa-control-plane | #173 MERGED (`bb99859`) | COMPLETED — `reports/completed/issue-172/final-report.md` | 2026-09-04 |
 | #168 Phase 2 Hub↔Relay E2E | YasinHub (+ YasinRelay Phase 1) | feat/yasinrelay-control-plane-e2e | #169 MERGED (`57c52df`) | COMPLETED — `reports/completed/issue-168/final-report.md` | 2026-09-04 |
 | #163 START/STOP/RESTART verification | YasinHub | fix/control-plane-startup-verification | #167 MERGED (`2b30970`) | COMPLETED — `reports/completed/issue-163/final-report.md` | 2026-09-04 |
 | #170 Phase 3 (autonomous portion) | YasinHub | feat/phase3-device-e2e-control-plane | #171 MERGED (`7904a22`) | PARTIAL/BLOCKED device — `reports/completed/issue-170/final-report.md` | 2026-09-04 |
+
