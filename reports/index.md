@@ -20,6 +20,7 @@ Canonical persistent report store for autonomous Yasin engineering work.
 
 | Issue | Repository | Branch | PR | Status | Updated |
 |-------|------------|--------|----|--------|---------|
+| #174 Final ecosystem E2E acceptance | YasinHub | feat/final-ecosystem-e2e-174 | #175 MERGED (`21e3060`) | **SOFTWARE E2E COMPLETE — DEVICE ACCEPTANCE DEFERRED** — `reports/completed/issue-174/final-report.md` | 2026-09-05 |
 | #57 Phase 6 production hardening | Yasin-agent | feat/phase6-production-hardening | #58 MERGED (`f348134`) | COMPLETE — DEVICE ACCEPTANCE DEFERRED — `reports/completed/issue-57/final-report.md` | 2026-09-04 |
 | #54 Phase 5 Agent↔Hub Integration | Yasin-agent | feat/phase5-yasin-agent-integration | #55 MERGED (`248f2fd`) | COMPLETED — `reports/completed/issue-54/final-report.md` | 2026-09-04 |
 | #172 Phase 4 PWA Control Plane | YasinHub | feat/phase4-pwa-control-plane | #173 MERGED (`bb99859`) | COMPLETED — `reports/completed/issue-172/final-report.md` | 2026-09-04 |
