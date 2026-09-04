@@ -20,6 +20,7 @@ Canonical persistent report store for autonomous Yasin engineering work.
 
 | Issue | Repository | Branch | PR | Status | Updated |
 |-------|------------|--------|----|--------|---------|
+| #54 Phase 5 Agent↔Hub Integration | Yasin-agent | feat/phase5-yasin-agent-integration | #55 MERGED (`248f2fd`) | COMPLETED — `reports/completed/issue-54/final-report.md` | 2026-09-04 |
 | #172 Phase 4 PWA Control Plane | YasinHub | feat/phase4-pwa-control-plane | #173 MERGED (`bb99859`) | COMPLETED — `reports/completed/issue-172/final-report.md` | 2026-09-04 |
 | #168 Phase 2 Hub↔Relay E2E | YasinHub (+ YasinRelay Phase 1) | feat/yasinrelay-control-plane-e2e | #169 MERGED (`57c52df`) | COMPLETED — `reports/completed/issue-168/final-report.md` | 2026-09-04 |
 | #163 START/STOP/RESTART verification | YasinHub | fix/control-plane-startup-verification | #167 MERGED (`2b30970`) | COMPLETED — `reports/completed/issue-163/final-report.md` | 2026-09-04 |
