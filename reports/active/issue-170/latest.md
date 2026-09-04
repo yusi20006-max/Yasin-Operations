@@ -1,7 +1,9 @@
-# latest.md — Issue 170 Phase 3
+# latest.md — Issue 170
 
-- Branch: feat/phase3-device-e2e-control-plane
-- PR: #171
-- Local tests: 499 passed
-- Device: NOT AVAILABLE in agent environment
-- Next: CI → merge non-secret work → document BLOCKED publish path
+**Terminal state:** BLOCKED WITH VERIFIED EVIDENCE
+
+- Merged PR #171 → `7904a227c897aadf9844eb08e410d8a744e82932`
+- Autonomously completable code/tests/CI: DONE
+- Real device + publish: BLOCKED (no Termux, no credentials in agent)
+- Final report: `reports/completed/issue-170/final-report.md`
+- Operator next step on device: `bash scripts/termux/verify_phase3_control_plane.sh`

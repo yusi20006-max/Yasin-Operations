@@ -14,7 +14,7 @@ Canonical persistent report store for autonomous Yasin engineering work.
 
 | Issue | Repository | Branch | Status | Updated |
 |-------|------------|--------|--------|---------|
-| *(none)* | — | — | — | 2026-09-04 |
+| #170 Phase 3 device E2E | YasinHub | feat/phase3-device-e2e-control-plane (merged) | **BLOCKED WITH VERIFIED EVIDENCE** — device/operator publish; code merged `#171` | 2026-09-04 |
 
 ## Completed Issues
 
@@ -22,3 +22,4 @@ Canonical persistent report store for autonomous Yasin engineering work.
 |-------|------------|--------|----|--------|---------|
 | #168 Phase 2 Hub↔Relay E2E | YasinHub (+ YasinRelay Phase 1) | feat/yasinrelay-control-plane-e2e | #169 MERGED (`57c52df`) | COMPLETED — `reports/completed/issue-168/final-report.md` | 2026-09-04 |
 | #163 START/STOP/RESTART verification | YasinHub | fix/control-plane-startup-verification | #167 MERGED (`2b30970`) | COMPLETED — `reports/completed/issue-163/final-report.md` | 2026-09-04 |
+| #170 Phase 3 (autonomous portion) | YasinHub | feat/phase3-device-e2e-control-plane | #171 MERGED (`7904a22`) | PARTIAL/BLOCKED device — `reports/completed/issue-170/final-report.md` | 2026-09-04 |
