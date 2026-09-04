@@ -1,13 +1,15 @@
-# Implementation
+# Implementation — Issue #174
 
-A final software-side acceptance regression was added to YasinHub on branch `feat/final-ecosystem-e2e-174`:
+A dedicated software-side acceptance regression was added to YasinHub:
 
 `tests/test_final_ecosystem_e2e_acceptance.py`
 
-It covers:
-- canonical YasinRelay Termux launcher contract;
-- Hub spawn boundary (`shell=False` and process identity verification);
-- real child-process START → STOP → START → RESTART with PID replacement;
-- PWA contract requiring authoritative `success===true`, backend PID rendering, lifecycle pending guard, and authoritative result formatting.
+The merged test covers:
+- canonical YasinRelay Termux launcher command and process pattern;
+- Hub spawn safety and process identity verification;
+- real child-process START → STOP → START → RESTART with PID replacement and final cleanup;
+- PWA backend PID rendering and authoritative lifecycle-result guards.
 
-No production lifecycle authority was added. No Agent, AI, MCP, Relay, credential, or device implementation was changed.
+PR #175 was squash-merged to `main` as `21e306058dc88bd82fff1f4e178c206106c5d077`.
+
+No second lifecycle authority, Agent implementation, AI provider implementation, MCP authorization path, device implementation, credentials, or production channel was added.
