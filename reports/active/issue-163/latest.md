@@ -2,89 +2,87 @@
 
 ## CURRENT ISSUE
 
-YasinHub START reports success for services that exit shortly after Popen
-(YasinRelay with no channels: HTTP `success:true` + PID file, then NO RELAY PROCESS).
+YasinHub START false-success workstream (child exits shortly after Popen → Hub said success).
 
 ## REPOSITORY
 
-yusi20006-max/YasinHub (worktree `~/yasineco/.worktrees/yasinhub-163`; original checkout
-`~/yasineco/YasinHub` left untouched on conflicted dashboard branch — DO NOT TOUCH).
+yusi20006-max/YasinHub
 
 ## BRANCH
 
-`fix/control-plane-startup-verification` (base: main @ 5addef7).
+Work is MERGED; branch `fix/control-plane-startup-verification` deleted (local + remote).
+Main is at merge commit `2b30970`.
 
 ## CURRENT PHASE
 
-Reproduced with evidence → implementing fix.
+COMPLETED — final report at `reports/completed/issue-163/final-report.md`.
 
 ## OBJECTIVE
 
-Bounded deterministic START verification (fail fast on early exit, FAILED status + PID
-cleanup), identity-aware STOP (never kill self / foreign PID), verified RESTART
-(old-dead + new-alive + PID-differ), hermetic `from_env`.
+(achieved) Bounded START verification, identity-aware STOP, verified RESTART, hermetic from_env.
 
 ## LAST SUCCESSFUL STEP
 
-Bug reproduced: `start_service=True pid_file=11959 alive_after_wait=False`.
+PR #167 merged 2026-09-04T14:38:23Z; CI 6/6 green; post-merge main 37/37 targeted green;
+live device verification 13/13; branches cleaned; final report pushed (this update).
 
 ## CURRENT STATE
 
-Reports written (`status.md`, `investigation.md`, `evidence.md`, this file).
-Implementation not yet started.
+All evidence in `reports/completed/issue-163/final-report.md` and this directory's
+`status/investigation/evidence/implementation/verification.md`.
 
 ## EVIDENCE
 
-See `evidence.md` (E1–E4).
+Pre-fix repro `start_service=True pid_file=11959 alive_after_wait=False`; post-fix `False`
++ PID removed + FAILED; full suite 485/485 ×2; live HTTP 13/13; CI run 33884611788 green.
 
 ## FAILURES
 
-- Baseline suite: 1 failed (`test_config_from_env_present`), 448 passed.
-- Repro script confirms false-success START.
+None remaining in this workstream.
 
 ## ROOT CAUSE
 
-Single 0.3s `proc.poll()` check in `start_service`; no startup verification window, no
-process-identity check, blanket pattern kill in stop, unverified restart.
+0.3s single poll; no ownership check; unverified restart; non-hermetic from_env; three
+latent test-isolation defects (all fixed with evidence, none weakened).
 
 ## CHANGES MADE
 
-None yet (branch created, clean).
+Commit `81589b4` (6 files, +321/−23), merged as `2b30970`. Original `~/yasineco/YasinHub`
+checkout untouched (pre-existing dashboard merge conflict left alone).
 
 ## TEST STATUS
 
-Baseline: 1 failed / 448 passed. Regression test to be added:
-`tests/test_control_plane_startup.py`.
+485/485 full suite (merged main). No tests deleted/skipped/weakened.
 
 ## LINT STATUS
 
-NOT CONFIGURED (no ruff/mypy/flake8 in repo — to be confirmed during verification).
+NOT CONFIGURED (CI runs pytest only).
 
 ## TYPE CHECK STATUS
 
-Pending (likely NOT CONFIGURED).
+NOT CONFIGURED.
 
 ## SECURITY STATUS
 
-Pending (grep scan planned; no `shell=True` — `shlex.split` + `shell=False` already).
+Grep-clean; no new exec surface; no secrets in reports.
 
 ## CI STATUS
 
-No PR yet.
+PASS 6/6 (3.9–3.13, 3.14-dev).
 
 ## PR STATUS
 
-No PR yet.
+#167 MERGED.
 
 ## BLOCKER
 
-None. (Do NOT run live YasinRelay publishing again — a probe run started real
-fetch/publish activity and was killed via timeout; use synthetic repro only.)
+None.
 
 ## NEXT ACTION
 
-Implement `service_manager.py` changes + `from_env` fix + regression tests, then full
-suite, Termux lifecycle verification, PR/CI/merge, final report.
+None for this workstream. Remaining cross-repo item: YasinRelay-side `yasinrelay-termux`
+launcher (separate Issue/branch/PR in YasinRelay if owned there). Broader #163 checklist
+continues separately.
 
 ## LAST UPDATED
 

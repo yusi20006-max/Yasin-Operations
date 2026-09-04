@@ -12,8 +12,14 @@ Canonical persistent report store for autonomous Yasin engineering work.
 
 ## Active Issues
 
-_No active reports yet._
+| Issue | Repository | Branch | Status | Updated |
+|-------|------------|--------|--------|---------|
+| #163 (lifecycle workstream) | YasinHub | (merged; branch cleaned) | COMPLETED — see Completed | 2026-09-04 |
+
 
 ## Completed Issues
 
-_No completed reports yet._
+| Issue | Repository | Branch | PR | Status | Updated |
+|-------|------------|--------|----|--------|---------|
+| #163 (START/STOP/RESTART verification) | YasinHub | fix/control-plane-startup-verification (deleted after merge) | #167 MERGED (`2b30970`) | COMPLETED — `reports/completed/issue-163/final-report.md` | 2026-09-04 |
+
