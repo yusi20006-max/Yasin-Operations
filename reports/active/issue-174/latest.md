@@ -1,9 +1,16 @@
 # Latest — Issue #174
 
-**State: IN PROGRESS — CI pending**
+**State: SOFTWARE-SIDE ACCEPTANCE COMPLETE — DEVICE ACCEPTANCE DEFERRED**
 
-The final software-side E2E acceptance track has started. YasinHub branch `feat/final-ecosystem-e2e-174` contains a deterministic acceptance regression for the canonical Relay lifecycle and PWA authoritative-state contract.
+YasinHub final acceptance PR #175 has been squash-merged to `main` at `21e306058dc88bd82fff1f4e178c206106c5d077`.
 
-Yasin-Agent Phase 6 is already merged as Issue #57 / PR #58; duplicate Issue #56 is closed as duplicate.
+PR CI run #206 is green across Python 3.9, 3.10, 3.11, 3.12, 3.13 and 3.14-dev. The merged regression proves the canonical Relay launcher contract, Hub process-spawn/identity boundary, real child-process START → STOP → START → RESTART PID behavior, and PWA authoritative lifecycle-state guards.
 
-Next gate: PR CI. If CI is green, merge and perform post-merge verification on the actual merge commit. Physical Android/Termux ARM64 and credentialed publish remain explicitly unexecuted until their real operator dependencies exist.
+Post-merge workflow lookup for the merge SHA returned no workflow run because the inspected CI is PR-triggered; this is recorded as informational, not as a failed check.
+
+## Final boundary
+- Software-side E2E: **PASS**
+- Physical Android/Termux ARM64: **NOT EXECUTED / DEFERRED**
+- Credentialed source/fetch/publish: **BLOCKED — OPERATOR CONFIGURATION REQUIRED**
+
+No device, PID, channel, credential, publish, or runtime evidence has been fabricated. The next acceptance action is the real Android/Termux ARM64 operator run; once available, its evidence must be added separately before calling the entire ecosystem device-certified.
