@@ -1,18 +1,20 @@
 # Issue #174 — Latest Status — Termux ARM64 Final Acceptance (CHECKPOINT 25 STARTED)
 
-**Current overall status:** CHECKPOINT 26 COMPLETE — Operator Config OPERATOR-BLOCKED honest
-**Last completed checkpoint:** 26 — OPERATOR CONFIGURATION (absent, not fabricated)
-**Next checkpoint:** 27 — REAL PUBLISH E2E (OPERATOR-BLOCKED verification) + empty-config zombie regression
-**Last successful action:** Operator config verified absent: SOURCE_CHANNELS present=False len0, EITAA_TOKEN present=False, EITAA_CHANNEL present=False, AI_API_KEY present=False, .env 907B empty values, os.environ absent, canonical load_config via dotenv verified, no secrets printed or committed
+**Current overall status:** CHECKPOINT 27 COMPLETE — Real Publish OPERATOR-BLOCKED honest + Zombie PASS
+**Last completed checkpoint:** 27 — REAL PUBLISH E2E (OPERATOR-BLOCKED, dummy lifecycle PASS)
+**Next checkpoint:** 28 — FINAL PWA VISUAL/BROWSER ACCEPTANCE
+**Last successful action:** Real publish E2E via Hub verified OPERATOR-BLOCKED honest (SOURCE_CHANNELS empty → yasinrelay exit 1 before fetch, no fake publish), zombie regression PASS (Hub start_service success=False pid None health FAILED not RUNNING, 2.0s window), dummy lifecycle PASS pid 18269→18364→18391 old dead new alive, real .env not modified len0, no secrets, canonical Feed→Relay→AI→Eitaa path code-verified
 **Last verified evidence:**
 - Device: Samsung SM-A705FN Android 11 API30 aarch64 Termux Python 3.14.6 (real)
-- Hub: yasineco/YasinHub fix/final-device-acceptance-174 c7ca808 (5965c64 parent) — zombie fix intact
-- Relay: yasineco/YasinRelay 6bbe6d4 main — config.py load_dotenv + load_config consumes SOURCE_CHANNELS/EITAA_TOKEN/AI_API_KEY honestly, cli exit 1 when empty
-- Agent 44c130a, AI 410214d — AI 415 passed
-- Env: all required secrets present=False empty (od -c confirms EITAA_TOKEN=\n etc), AI_PROVIDER=yasinai present, no env override, .env not committed, logging_config redacts
-- Working tree: YasinHub root pwa-dashboard-158 4abf24b, yasineco clean
+- Hub: yasineco/YasinHub fix/final-device-acceptance-174 c7ca808 — zombie fix intact (poll 0.15s 2.0s window + is_pid_alive zombie)
+- Relay: 6bbe6d4 main — cli exit 1 `هیچ کانال منبعی تنظیم نشده` before fetch, pipeline not reachable, EitaaPublisher would require token
+- Agent 44c130a, AI 410214d 415 passed
+- Publish: timestamp 2026-09-05T00:07:57.967Z service yasinrelay pid None is_pid_alive False process_running False health FAILED last_success False — OPERATOR-BLOCKED
+- Dummy: START 18269 alive True, SIGTERM alive False, STOP pid None, START 18364, RESTART 18391 !=18364 old dead new alive — PASS
+- Empty-config regression: success False pid None not RUNNING no zombie PASS, .env unchanged SOURCE_CHANNELS= len0, no fabrication, log honest
+- Working tree: YasinHub root 4abf24b pwa-dashboard-158 minor diff, yasineco clean
 **Current blockers:**
-- SOURCE_CHANNELS/EITAA_TOKEN/AI_API_KEY empty → real publish E2E remains OPERATOR-BLOCKED (truthful, no fabrication) — to be documented in 27
+- Real publish remains OPERATOR-BLOCKED until operator provisions valid SOURCE_CHANNELS/EITAA_TOKEN/EITAA_CHANNEL/AI_API_KEY (no dummy credentials)
 - PWA visual/browser acceptance still DEFERRED — checkpoint 28
 **Current device:** Samsung SM-A705FN Android 11 API30 aarch64 Termux Python 3.14.6
 **Current repository commits:**
