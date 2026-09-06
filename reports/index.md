@@ -21,7 +21,7 @@ Canonical persistent report store for autonomous Yasin engineering work.
 
 | Issue | Repository | Branch | PR | Status | Updated |
 |-------|------------|--------|----|--------|---------|
-| #174 Final ecosystem E2E acceptance | YasinHub fix/final-device-acceptance-174 c7ca808 + yasineco device | fix/final-device-acceptance-174 c7ca808 (5965c64 parent) + main device 2026-09-05 | **PARTIAL (FIXED) — CHECKPOINT 25-30 — Hub 478 Agent 240 Relay 108 AI 415 PASS, Zombie FIXED, Operator BLOCKED, Visual BLOCKED** — `reports/completed/issue-174/final-report.md` (30 checkpoints, was 16) + `reports/active/issue-174/latest.md` handoff | 2026-09-05 06:10 UTC |
+| #174 Final ecosystem E2E acceptance | YasinHub fix/final-device-acceptance-174 c7ca808 + yasineco device | fix/final-device-acceptance-174 c7ca808 (5965c64 parent) + main device 2026-09-05 | **SOFTWARE + REAL PUBLISH PASS; PWA VISUAL REMAINS BLOCKED** — Hub 478, Agent 240, Relay 108, AI 415; real Eitaa receipt verified; `reports/active/real-publish-acceptance.md` | 2026-09-06 |
 | #57 Phase 6 production hardening | Yasin-agent | feat/phase6-production-hardening | #58 MERGED (`f348134`) | COMPLETE — DEVICE ACCEPTANCE DEFERRED — `reports/completed/issue-57/final-report.md` | 2026-09-04 |
 | #54 Phase 5 Agent↔Hub Integration | Yasin-agent | feat/phase5-yasin-agent-integration | #55 MERGED (`248f2fd`) | COMPLETED — `reports/completed/issue-54/final-report.md` | 2026-09-04 |
 | #172 Phase 4 PWA Control Plane | YasinHub | feat/phase4-pwa-control-plane | #173 MERGED (`bb99859`) | COMPLETED — `reports/completed/issue-172/final-report.md` | 2026-09-04 |
@@ -29,3 +29,6 @@ Canonical persistent report store for autonomous Yasin engineering work.
 | #163 START/STOP/RESTART verification | YasinHub | fix/control-plane-startup-verification | #167 MERGED (`2b30970`) | COMPLETED — `reports/completed/issue-163/final-report.md` | 2026-09-04 |
 | #170 Phase 3 (autonomous portion) | YasinHub | feat/phase3-device-e2e-control-plane | #171 MERGED (`7904a22`) | PARTIAL/BLOCKED device — `reports/completed/issue-170/final-report.md` | 2026-09-04 |
 
+### #174 publish acceptance note
+
+The previous operator-blocked state is superseded by the verified real-publish audit committed on 2026-09-06. The evidence includes a real Eitaa publish receipt with `success=True` and `message_id=169818801`. No credentials or secret values are stored in this index. The remaining #174 acceptance gate is PWA visual/browser acceptance; this is intentionally deferred to the later UI/Claude pass.
