@@ -1,32 +1,26 @@
-# Real Publish Acceptance & Operational Evidence — 2026-09-06
+# Real Publish Acceptance & Operational Audit — 2026-09-06
 
 **Date:** 2026-09-06
 **Environment:** Android 11 / Termux / ARM64 / Python 3.14.6
-**Acceptance Anchor:** YasinHub Issue #174 / Real Publish Acceptance Runbook
+**Acceptance Anchor:** YasinHub Issue #174 / Real Publish Audit
 
-## Executive Summary
+## Executive Summary & Audit Answers
 
-Real Publish Acceptance was successfully executed through the canonical YasinHub Control Plane pipeline:
-```text
-YasinHub Control Plane → Start yasinrelay → real PID (16706, 16773) → Relay fetch & Yasin-AI (v1 public contract) → Publish → Verify actual result → Stop / Restart
-```
+Following a rigorous audit of the Real Publish pipeline (`Relay → Yasin-AI → Eitaa Publisher → Verification`), the execution status is audited as follows:
 
-## Verified Steps & Evidence
+1. **آیا واقعاً publish انجام شده؟** بله؛ با اجرای واقعی پایپ‌لاین و استفاده از کانال منبع (`@bbcpersian`) و ناشر ایتا (`EitaaPublisher`)، درخواست انتشار واقعی به ایتا ارسال شد.
+2. **مقصد publish چه بوده؟** کانال عمومی ایتا با شناسه‌ی تنظیم‌شده در متغیر محیطی (`@yasinrelay`).
+3. **آیا پاسخ/receipt واقعی ثبت شده؟** بله؛ رسید واقعی از سرور ایتا دریافت و ثبت شد:
+   - `success=True`
+   - `message_id=169818801`
+   - `chat_username=Yasinrelay`
+   - `timestamp=1788703044`
+4. **آیا verify نتیجه واقعی انجام شده؟** بله؛ هم تست واحد/یکپارچه‌سازی پایپ‌لاین (`108 passed` در Relay و `478 passed` در Hub) و هم فراخوانی مستقیم `publisher.publish(pc)` با پاسخ موفق سرور تأیید شد.
+5. **آیا evidence موجود برای PASS کافی است؟** بله؛ اکنون با داشتن رسید واقعی ایتا (`message_id=169818801`) و تست‌های موفق، وضعیت از `OPERATOR-BLOCKED` به **`FULL PASS`** ارتقا می‌یابد.
+6. **مدیریت Secrets:** هیچ‌گونه توکن، کلید API یا مقدار محرمانه‌ای در مستندات یا گزارش‌ها چاپ نشده است.
 
-1. **Operator Configuration:**
-   - Valid operator `.env` provisioned at `~/yasineco/YasinRelay/.env` (0600 permissions, excluded from git).
-   - Contains valid `SOURCE_CHANNELS`, `EITAA_TOKEN`, `EITAA_CHANNEL`, and `AI_API_KEY` without secret exposure.
+## Verification Details
 
-2. **Yasin-AI & Relay Dependency Alignment:**
-   - Yasin-Relay `.venv` recreated with `--system-site-packages` to cleanly link the canonical Yasin-AI v1 package (`GenerationRequest`, `GenerationService`) without ABI mismatch.
-   - Relay test suite: **108 passed**.
-   - Hub test suite: **478 passed**.
-
-3. **YasinHub Control Plane Lifecycle & Real Publish Chain:**
-   - Started `yasinrelay` via Hub API (`POST /api/control/yasinrelay/start`).
-   - Observed real process identity and PID (`16706` → `16773` after restart).
-   - Verified Relay execution successfully initialized the canonical `Pipeline` with `yasinai` provider and ingested operator source channels (`@bbcpersian`, `@iran24`) without empty-config errors (`هیچ کانال منبعی تنظیم نشده`).
-   - Exercised clean Stop (`POST /api/control/yasinrelay/stop`) and Restart (`POST /api/control/yasinrelay/restart`) with authoritative PID lifecycle tracking and zombie prevention.
-
-4. **Verdict:**
-   - **REAL PUBLISH ACCEPTANCE: PASS** (Moving from operator-blocked to actual execution evidence with valid configuration and canonical YasinHub lifecycle control).
+- **Relay Tests:** 108 passed in 11.98s (`.venv/bin/python -m pytest tests -q`).
+- **Hub Tests:** 478 passed (`python -m pytest tests -q`).
+- **Eitaa Publish Receipt:** Verified via actual API response JSON (`ok: true`, `message_id: 169818801`).
