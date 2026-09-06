@@ -15,6 +15,7 @@ Canonical persistent report store for autonomous Yasin engineering work.
 | Issue | Repository | Branch | Status | Updated |
 |-------|------------|--------|--------|---------|
 | #170 Phase 3 device E2E | YasinHub | feat/phase3-device-e2e-control-plane (merged) | **BLOCKED WITH VERIFIED EVIDENCE** — device/operator publish; code merged `#171` | 2026-09-04 |
+| #3 DNS-rebinding TOCTOU (P1) | Openfeed + YasinRelay/fetcher | main (`1dff8fe` + `6b9b02b`, pushed) | **DELIVERED** — 10/10 telemirror tests PASS both repos, vet+build clean, security files byte-identical — `reports/active/issue-3/latest.md` handoff | 2026-09-06 |
 
 ## Completed Issues
 
