@@ -21,6 +21,7 @@ Canonical persistent report store for autonomous Yasin engineering work.
 
 | Issue | Repository | Branch | PR | Status | Updated |
 |-------|------------|--------|----|--------|---------|
+| #179 Dedicated Yasin service ports & ownership contract | YasinHub | main (`b658ad0`) | — | **COMPLETE** — 567/567 tests; canonical `YasinEco` Agent lifecycle verified via YasinHub (PID `13262` → `12482`); `reports/completed/issue-179/final-report.md` | 2026-09-09 |
 | #174 Final ecosystem E2E acceptance | YasinHub fix/final-device-acceptance-174 c7ca808 + yasineco device | fix/final-device-acceptance-174 c7ca808 (5965c64 parent) + main device 2026-09-05 | **SOFTWARE + REAL PUBLISH PASS; PWA VISUAL REMAINS BLOCKED** — Hub 478, Agent 240, Relay 108, AI 415; real Eitaa receipt verified; `reports/active/real-publish-acceptance.md` | 2026-09-06 |
 | #57 Phase 6 production hardening | Yasin-agent | feat/phase6-production-hardening | #58 MERGED (`f348134`) | COMPLETE — DEVICE ACCEPTANCE DEFERRED — `reports/completed/issue-57/final-report.md` | 2026-09-04 |
 | #54 Phase 5 Agent↔Hub Integration | Yasin-agent | feat/phase5-yasin-agent-integration | #55 MERGED (`248f2fd`) | COMPLETED — `reports/completed/issue-54/final-report.md` | 2026-09-04 |
