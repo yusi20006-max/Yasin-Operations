@@ -17,6 +17,32 @@ yasin-operations --version
 
 Use `--json` for machine-readable output.
 
+## Single-command service startup contract
+
+Every Yasin service that exposes a local listening port should provide one
+canonical startup entrypoint. The entrypoint is responsible for preflight and
+recovery so the operator does not need a separate `kill` step.
+
+Required behavior:
+
+1. Determine the configured service port (using the service default when no
+   override is supplied).
+2. If the port is free, start the service.
+3. If the port is occupied, identify the process holding it before taking any
+   action.
+4. If the process is positively identified as a previous instance owned by the
+   same Yasin service, terminate it gracefully, verify that it exits, verify
+   that the port is released, and then start a fresh instance.
+5. If the process is another or unrecognized program, fail closed: report the
+   port, PID/process identity when available, and do not kill or modify it.
+6. Never treat a successful `kill` request alone as proof of recovery; startup
+   must verify both process termination and port release before launching the
+   replacement instance.
+
+This contract applies across Yasin services, including Openfeed, and is the
+preferred Termux/Android operator experience: one startup command should be
+safe to repeat.
+
 ## Production acceptance
 
 Hosted/offline acceptance:
@@ -70,6 +96,7 @@ The two version commands must report the same package version. The source distri
 - Dry-run never invokes the target tool.
 - All adapter-driven mutations pass through `Executor` and `SafetyPolicy`.
 - Audit records contain operation, target, actor/source, correlation ID, result, and timing.
+- A service startup launcher may terminate only a process it can positively identify as the same managed service; unknown/foreign processes are fail-closed.
 
 ## Failure isolation
 
@@ -87,3 +114,6 @@ If a target service fails, the Operations adapter reports the failure; it does n
 | Target service failed | Status/health reports failed; other services remain observable |
 | Optional service directory absent | Live acceptance SKIP; not a product FAIL |
 | Service root / sv missing | Live acceptance BLOCKED (environment) |
+| Service port free | Single-command launcher starts the service |
+| Port held by same managed service | Launcher safely terminates the owned instance, verifies release, then restarts |
+| Port held by another service | Launcher fails closed and reports the conflict without killing the other service |
