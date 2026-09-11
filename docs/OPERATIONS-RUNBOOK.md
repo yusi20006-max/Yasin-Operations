@@ -117,3 +117,78 @@ If a target service fails, the Operations adapter reports the failure; it does n
 | Service port free | Single-command launcher starts the service |
 | Port held by same managed service | Launcher safely terminates the owned instance, verifies release, then restarts |
 | Port held by another service | Launcher fails closed and reports the conflict without killing the other service |
+
+## Universal self-healing startup contract (YasinHub Control Plane)
+
+Authority: YasinHub is the single Control Plane and lifecycle authority for
+every managed Yasin service. The lifecycle path is always:
+
+```text
+PWA -> YasinHub -> Runit -> Service
+```
+
+Runit (`termux-services`) remains the process supervisor for Runit-managed
+services. YasinHub orchestrates it via `sv up` / `sv down`; no second
+lifecycle manager exists, and Runit-managed services are never bypassed with
+ad-hoc background processes. Canonical implementation: `yasinhub/startup.py`
+(Hub itself, port 7000), `yasinhub/service_lifecycle.py` (generic contract
+for all managed services), `yasinhub/runit.py` (sv adapter),
+`yasinhub/service_manager.py` (spawn/stop/restart authority),
+`yasinhub/ports.py` (canonical port allocation 7000-7099).
+
+Flow:
+
+```text
+Port free
+    |
+    v
+Start through Runit (sv up when Runit-managed, else spawn)
+    |
+    v
+Verify PID + process identity + listening port (+ health where contracted)
+
+Port occupied
+    |
+    v
+Identify owner (PID + real process identity, never port number alone)
+    |
+    v
+Same service?
+   |-- YES -> graceful stop via Runit/service lifecycle (SIGTERM, never
+   |           blind kill -9) -> wait for process death -> wait for port
+   |           release -> start -> verify new PID/identity/port
+   |-- NO  -> FAIL CLOSED -> report -> do not kill
+```
+
+Rules:
+
+- **Port free**: start normally, then accept RUNNING only with a live PID,
+  verified process identity (discovery pattern must match when configured),
+  the expected port listening/owned, and the contract health endpoint where
+  one is declared.
+- **Same-service occupant** (older/stale instance, identity-proven): stop it
+  gracefully through the existing Runit/service lifecycle (`sv down` first
+  so the supervisor does not resurrect the PID, then SIGTERM). Wait until
+  the process actually disappears AND the port is actually released. Then
+  start the current instance and verify the new PID, identity, and port.
+  The normal path never uses blind `kill -9`; a refusal to stop fails
+  closed with no new instance started.
+- **Foreign or unknown occupant**: FAIL CLOSED. Do not kill, restart, or
+  `kill -9` anything. Do not use port-only ownership assumptions. Report
+  the service being started, configured port, occupying PID, safely
+  available process identity, ownership classification, and the refusal
+  reason. The failure propagates through the YasinHub service
+  status/report contract so the PWA displays the real failure.
+- **Stale/dead/incomplete metadata** (missing, dead, unreadable, or
+  ambiguous PID/process information): treat ownership as unsafe, kill
+  nothing, fail safely with the reason reported.
+- **Hardened platforms** (e.g. Termux kernels without `/proc/net/tcp`):
+  PID-level owner discovery may be unavailable. The contract then
+  correlates via a live identity-verified candidate (PID file + pattern
+  hints, optional `lsof`/`fuser` listener hints) plus the succeeding
+  contract health anchor. Without both, it fails closed.
+- **PWA lifecycle**: Start/Stop/Restart/Status operate on real services
+  through YasinHub/Runit and return real PID, process identity, port
+  state, service state, and failure reasons. No display-only state.
+- **Execution**: Termux / Android ARM64, non-interactive. No prompts, no
+  stdin reads, no secrets in logs or reports.
