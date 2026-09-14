@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "runtime": "termux-android-arm64",
+  "launchers": [
+    {"name":"opencode","command":["opencode"],"lifecycle":"direct"},
+    {"name":"codex","command":["codex"],"lifecycle":"direct"},
+    {"name":"claude","command":["claude"],"lifecycle":"direct"},
+    {"name":"yasin","command":["yasin"],"lifecycle":"direct"},
+    {"name":"yasinhub","command":["python","-m","yasinhub.startup"],"root":"$HOME/yasineco/YasinHub","port":7000,"identity":"yasinhub.startup","lifecycle":"direct"},
+    {"name":"yasin-agent","command":["yasin","start","yasin-agent"],"start":["yasin","start","yasin-agent"],"stop":["yasin","stop","yasin-agent"],"port":7002,"lifecycle":"hub"},
+    {"name":"yasinfeed","command":["yasin","start","yasinfeed"],"start":["yasin","start","yasinfeed"],"stop":["yasin","stop","yasinfeed"],"port":7004,"lifecycle":"hub"},
+    {"name":"yasinrelay","command":["yasin","start","yasinrelay"],"start":["yasin","start","yasinrelay"],"stop":["yasin","stop","yasinrelay"],"lifecycle":"hub"},
+    {"name":"yasin-ai","command":["yasin","start","yasin-ai"],"start":["yasin","start","yasin-ai"],"stop":["yasin","stop","yasin-ai"],"lifecycle":"hub"},
+    {"name":"yasinpress","command":["yasin","start","yasinpress"],"start":["yasin","start","yasinpress"],"stop":["yasin","stop","yasinpress"],"lifecycle":"hub"},
+    {"name":"yasin-coder","command":["yasin","start","yasin-coder"],"start":["yasin","start","yasin-coder"],"stop":["yasin","stop","yasin-coder"],"lifecycle":"hub"},
+    {"name":"yasin-core","command":["yasin","start","yasin-core"],"start":["yasin","start","yasin-core"],"stop":["yasin","stop","yasin-core"],"lifecycle":"hub"},
+    {"name":"yasin-mcp","command":["yasin","start","yasin-mcp"],"start":["yasin","start","yasin-mcp"],"stop":["yasin","stop","yasin-mcp"],"lifecycle":"hub"}
+  ]
+}
