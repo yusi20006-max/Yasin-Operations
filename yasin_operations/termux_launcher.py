@@ -106,6 +106,12 @@ def _wait_until(predicate: Callable[[], bool], timeout: float = 8.0) -> bool:
 def _stop_owned_direct(spec: LauncherSpec, pid: int) -> None:
     if not same_program(pid, spec):
         raise LauncherError(f"refusing to stop pid={pid}: ownership of {spec.name} is not proven")
+    # A PID can disappear between port discovery and the stop operation. That
+    # is already a successful stop; do not signal a recycled/unknown PID.
+    if not Path(f"/proc/{pid}").exists():
+        if spec.port is not None and not _wait_until(lambda: port_is_free(spec.port)):
+            raise LauncherError(f"refusing restart: port {spec.port} was not released")
+        return
     result = _run(spec.stop, cwd=spec.resolved_root) if spec.stop else None
     if result is None:
         os.kill(pid, signal.SIGTERM)
