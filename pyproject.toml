@@ -29,6 +29,9 @@ mcp = [
 where = ["."]
 include = ["yasin_operations*"]
 
+[tool.setuptools.package-data]
+yasin_operations = ["termux-launchers.json"]
+
 [tool.setuptools.dynamic]
 version = {attr = "yasin_operations.version.__version__"}
 
