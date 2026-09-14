@@ -30,6 +30,12 @@ class LauncherSpec:
     stop: tuple[str, ...] | None = None
     lifecycle: str = "direct"
 
+    @property
+    def resolved_root(self) -> str | None:
+        if self.root is None:
+            return None
+        return os.path.expanduser(os.path.expandvars(self.root))
+
 
 def load_registry(path: Path = DEFAULT_REGISTRY) -> dict[str, LauncherSpec]:
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -100,7 +106,7 @@ def _wait_until(predicate: Callable[[], bool], timeout: float = 8.0) -> bool:
 def _stop_owned_direct(spec: LauncherSpec, pid: int) -> None:
     if not same_program(pid, spec):
         raise LauncherError(f"refusing to stop pid={pid}: ownership of {spec.name} is not proven")
-    result = _run(spec.stop, cwd=spec.root) if spec.stop else None
+    result = _run(spec.stop, cwd=spec.resolved_root) if spec.stop else None
     if result is None:
         os.kill(pid, signal.SIGTERM)
     elif result.returncode != 0:
@@ -120,16 +126,12 @@ def _hub_action(spec: LauncherSpec, action: str, args: Sequence[str]) -> int:
 
 def launch(spec: LauncherSpec, args: Sequence[str]) -> int:
     if spec.lifecycle == "hub":
-        # Read-only preflight first. YasinHub remains the authoritative owner:
-        # start on a free port, restart on an occupied port. Hub decides whether
-        # the occupant is the same service or a foreign/unknown process and
-        # fails closed accordingly.
         if spec.port is not None and not port_is_free(spec.port):
             return _hub_action(spec, "restart", args)
         return _hub_action(spec, "start", args)
 
     if spec.port is None:
-        return _run([*spec.command, *args], cwd=spec.root).returncode
+        return _run([*spec.command, *args], cwd=spec.resolved_root).returncode
 
     pids = _pids_for_port(spec.port)
     if pids or not port_is_free(spec.port):
@@ -142,7 +144,7 @@ def launch(spec: LauncherSpec, args: Sequence[str]) -> int:
         for pid in pids:
             _stop_owned_direct(spec, pid)
 
-    result = _run([*(spec.start or spec.command), *args], cwd=spec.root)
+    result = _run([*(spec.start or spec.command), *args], cwd=spec.resolved_root)
     if result.returncode != 0:
         return result.returncode
     if not _wait_until(lambda: not port_is_free(spec.port)):
