@@ -17,6 +17,63 @@ yasin-operations --version
 
 Use `--json` for machine-readable output.
 
+## Termux named launchers
+
+Issue #206 provides one registry-backed launcher layer for Termux/Android
+ARM64. Install from the canonical Operations checkout:
+
+```sh
+cd ~/yasineco/Yasin-Operations
+bash scripts/install-termux-launchers.sh
+yasin-launch list
+```
+
+The installer creates canonical commands in `~/.local/bin`, including
+`opencode`, `codex`, `claude`, `yasin`, `yasinhub`, `yasin-agent`,
+`yasinfeed`, `yasinrelay`, `yasin-ai`, `yasinpress`, `yasin-coder`,
+`yasin-core`, and `yasin-mcp` when those launchers are present in the registry.
+Arguments are forwarded unchanged for direct CLI programs. The registry is
+`yasin_operations/termux-launchers.json`; do not create unrelated per-app
+aliases outside this registry.
+
+### Launcher ownership contract
+
+For a portful launcher:
+
+1. Determine the canonical port from the registry/authoritative service
+   contract.
+2. Check the port before starting.
+3. If free, start through the configured lifecycle authority and verify the
+   resulting service state.
+4. If occupied, never assume ownership from the port number alone.
+5. For YasinHub-managed services, the launcher delegates the ownership
+   decision to `yasin start/restart <service>` -> YasinHub. YasinHub must prove
+   same-service ownership before stopping an existing process.
+6. A same-service occupant is stopped gracefully through the existing
+   lifecycle mechanism, the process death and port release are verified, and a
+   fresh instance is started and verified.
+7. A foreign, unknown, stale, or ambiguous occupant fails closed. The launcher
+   must not kill or modify that process.
+
+For portless CLIs such as `opencode`, no fabricated port is introduced. The
+real executable is invoked directly and arguments/exit status are preserved.
+
+### Ownership boundaries
+
+```text
+named command
+    |
+    +--> portless CLI -----------------> real CLI entrypoint
+    |
+    +--> YasinHub-managed service -----> YasinCLI -> YasinHub -> Runit -> Service
+    |
+    `--> direct portful service -------> verified identity -> graceful stop -> start
+```
+
+The launcher is not a second Control Plane. YasinHub remains the sole
+lifecycle authority for Hub-managed services and Runit remains the supervisor
+behind it.
+
 ## Single-command service startup contract
 
 Every Yasin service that exposes a local listening port should provide one
