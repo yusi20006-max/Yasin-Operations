@@ -20,7 +20,7 @@ def test_free_port_starts_and_verifies(monkeypatch, spec):
     calls = []
     monkeypatch.setattr(launcher, "_pids_for_port", lambda port: [])
     monkeypatch.setattr(launcher, "port_is_free", lambda port: len(calls) == 0)
-    monkeypatch.setattr(launcher, "_run", lambda command, cwd=None: calls.append(command) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(launcher, "_run", lambda command, cwd=None: calls.append(tuple(command)) or type("R", (), {"returncode": 0})())
     assert launcher.launch(spec, ["--x"]) == 0
     assert calls == [("demo", "--x")]
 
@@ -46,7 +46,7 @@ def test_same_owner_gracefully_stops_then_starts(monkeypatch, spec):
     monkeypatch.setattr(launcher, "port_is_free", lambda port: bool(calls))
     monkeypatch.setattr(launcher, "process_identity", lambda pid: "python demo-service")
     monkeypatch.setattr(launcher, "_wait_until", lambda predicate, timeout=8.0: True)
-    monkeypatch.setattr(launcher, "_run", lambda command, cwd=None: calls.append(command) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(launcher, "_run", lambda command, cwd=None: calls.append(tuple(command)) or type("R", (), {"returncode": 0})())
     assert launcher.launch(spec, []) == 0
     assert calls == [("demo",)]
 
@@ -54,7 +54,7 @@ def test_same_owner_gracefully_stops_then_starts(monkeypatch, spec):
 def test_portless_forwards_arguments(monkeypatch):
     spec = launcher.LauncherSpec(name="opencode", command=("opencode",))
     calls = []
-    monkeypatch.setattr(launcher, "_run", lambda command, cwd=None: calls.append(command) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(launcher, "_run", lambda command, cwd=None: calls.append(tuple(command)) or type("R", (), {"returncode": 0})())
     assert launcher.launch(spec, ["--help"]) == 0
     assert calls == [("opencode", "--help")]
 
@@ -63,6 +63,6 @@ def test_hub_managed_occupied_port_delegates_restart(monkeypatch):
     spec = launcher.LauncherSpec(name="yasin-agent", command=("yasin", "start", "yasin-agent"), port=7002, lifecycle="hub")
     monkeypatch.setattr(launcher, "port_is_free", lambda port: False)
     calls = []
-    monkeypatch.setattr(launcher, "_run", lambda command, cwd=None: calls.append(command) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(launcher, "_run", lambda command, cwd=None: calls.append(tuple(command)) or type("R", (), {"returncode": 0})())
     assert launcher.launch(spec, []) == 0
     assert calls == [("yasin", "restart", "yasin-agent")]
