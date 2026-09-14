@@ -1,17 +1,12 @@
-"""Unified named launchers for the Termux/Android runtime.
-
-The launcher deliberately keeps lifecycle policy in a small registry.  It does
-not infer ownership from a port alone and never terminates a foreign process.
-Hub-managed services must delegate to their authoritative lifecycle command.
-"""
+"""Unified named launchers for the Termux/Android runtime."""
 from __future__ import annotations
 
 import json
 import os
-import shlex
 import signal
 import socket
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,9 +33,8 @@ class LauncherSpec:
 
 def load_registry(path: Path = DEFAULT_REGISTRY) -> dict[str, LauncherSpec]:
     data = json.loads(path.read_text(encoding="utf-8"))
-    result: dict[str, LauncherSpec] = {}
-    for raw in data.get("launchers", []):
-        spec = LauncherSpec(
+    return {
+        raw["name"]: LauncherSpec(
             name=raw["name"],
             command=tuple(raw["command"]),
             root=raw.get("root"),
@@ -50,22 +44,19 @@ def load_registry(path: Path = DEFAULT_REGISTRY) -> dict[str, LauncherSpec]:
             stop=tuple(raw["stop"]) if raw.get("stop") else None,
             lifecycle=raw.get("lifecycle", "direct"),
         )
-        result[spec.name] = spec
-    return result
+        for raw in data.get("launchers", [])
+    }
 
 
 def _pids_for_port(port: int) -> list[int]:
     """Return listener PIDs using Termux-friendly `ss` output when available."""
     try:
-        proc = subprocess.run(
-            ["ss", "-ltnp"], capture_output=True, text=True, check=False
-        )
+        proc = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True, check=False)
     except OSError:
         return []
-    needle = f":{port}"
     pids: set[int] = set()
     for line in proc.stdout.splitlines():
-        if needle not in line or "LISTEN" not in line:
+        if f":{port}" not in line or "LISTEN" not in line:
             continue
         for token in line.split("pid=")[1:]:
             digits = "".join(ch for ch in token if ch.isdigit())
@@ -106,63 +97,67 @@ def _wait_until(predicate: Callable[[], bool], timeout: float = 8.0) -> bool:
     return predicate()
 
 
-def _stop_owned(spec: LauncherSpec, pid: int) -> None:
+def _stop_owned_direct(spec: LauncherSpec, pid: int) -> None:
     if not same_program(pid, spec):
-        raise LauncherError(
-            f"refusing to stop pid={pid}: ownership of {spec.name} is not proven"
-        )
-    if spec.stop:
-        result = _run(spec.stop, cwd=spec.root)
-        if result.returncode != 0:
-            raise LauncherError(f"graceful stop failed for {spec.name}: exit={result.returncode}")
-    else:
+        raise LauncherError(f"refusing to stop pid={pid}: ownership of {spec.name} is not proven")
+    result = _run(spec.stop, cwd=spec.root) if spec.stop else None
+    if result is None:
         os.kill(pid, signal.SIGTERM)
+    elif result.returncode != 0:
+        raise LauncherError(f"graceful stop failed for {spec.name}: exit={result.returncode}")
     if not _wait_until(lambda: not Path(f"/proc/{pid}").exists()):
         raise LauncherError(f"refusing restart: pid={pid} did not exit gracefully")
     if spec.port is not None and not _wait_until(lambda: port_is_free(spec.port)):
         raise LauncherError(f"refusing restart: port {spec.port} was not released")
 
 
+def _hub_action(spec: LauncherSpec, action: str, args: Sequence[str]) -> int:
+    """Delegate ownership to YasinCLI -> YasinHub; never signal a Hub service PID."""
+    if args:
+        raise LauncherError(f"{spec.name} is a managed service and does not accept startup arguments")
+    return _run(["yasin", action, spec.name]).returncode
+
+
 def launch(spec: LauncherSpec, args: Sequence[str]) -> int:
+    if spec.lifecycle == "hub":
+        # Read-only preflight first. YasinHub remains the authoritative owner:
+        # start on a free port, restart on an occupied port. Hub decides whether
+        # the occupant is the same service or a foreign/unknown process and
+        # fails closed accordingly.
+        if spec.port is not None and not port_is_free(spec.port):
+            return _hub_action(spec, "restart", args)
+        return _hub_action(spec, "start", args)
+
     if spec.port is None:
-        command = [*spec.command, *args]
-        return _run(command, cwd=spec.root).returncode
+        return _run([*spec.command, *args], cwd=spec.root).returncode
 
     pids = _pids_for_port(spec.port)
     if pids or not port_is_free(spec.port):
         if not pids:
-            raise LauncherError(
-                f"port {spec.port} is occupied but its owner cannot be identified; refusing startup"
-            )
+            raise LauncherError(f"port {spec.port} is occupied but its owner cannot be identified; refusing startup")
         for pid in pids:
             if not same_program(pid, spec):
                 identity = process_identity(pid) or "<unknown>"
-                raise LauncherError(
-                    f"port conflict: port={spec.port} pid={pid} process={identity!r}; refusing startup"
-                )
+                raise LauncherError(f"port conflict: port={spec.port} pid={pid} process={identity!r}; refusing startup")
         for pid in pids:
-            _stop_owned(spec, pid)
+            _stop_owned_direct(spec, pid)
 
-    command = [*(spec.start or spec.command), *args]
-    result = _run(command, cwd=spec.root)
+    result = _run([*(spec.start or spec.command), *args], cwd=spec.root)
     if result.returncode != 0:
         return result.returncode
     if not _wait_until(lambda: not port_is_free(spec.port)):
-        raise LauncherError(f"{spec.name} exited/startup incomplete: port {spec.port} is not listening")
+        raise LauncherError(f"{spec.name} startup incomplete: port {spec.port} is not listening")
     return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    import sys
-
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
         print("usage: yasin-launch <name> [args...]")
         return 0
     if args[0] == "list":
         for name, spec in load_registry().items():
-            port = str(spec.port) if spec.port is not None else "portless"
-            print(f"{name}\t{port}\t{spec.lifecycle}")
+            print(f"{name}\t{spec.port if spec.port is not None else 'portless'}\t{spec.lifecycle}")
         return 0
     name, rest = args[0], args[1:]
     spec = load_registry().get(name)
