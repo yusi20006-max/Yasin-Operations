@@ -12,6 +12,7 @@ dependencies = []
 
 [project.scripts]
 yasin-operations = "yasin_operations.entrypoint:main"
+yasin-launch = "yasin_operations.termux_launcher:main"
 
 [project.optional-dependencies]
 dev = [
