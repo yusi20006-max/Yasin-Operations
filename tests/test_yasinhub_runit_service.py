@@ -10,6 +10,8 @@ def test_yasinhub_runit_service_targets_control_plane():
     assert 'python" -m yasinhub.startup' in text
     assert "yasinhub.cli start yasin-agent" not in text
     assert "YASINHUB_ROOT" in text
+    assert "$HOME/yasineco/YasinHub-runtime" in text
+    assert "$HOME/yasineco/YasinHub}" not in text
 
 
 def test_yasinhub_runit_service_documents_separate_agent_boundary():
@@ -23,6 +25,8 @@ def test_yasinhub_runit_installer_is_present_and_safe():
     text = INSTALLER.read_text()
     assert 'sv down yasinhub' in text
     assert 'mv "$TARGET" "$backup"' in text
-    assert 'ln -s "$SOURCE" "$TARGET"' in text
+    assert 'printf \'%s\\n\' "$HUB_ROOT" >"$TARGET/root"' in text
+    assert 'YASINHUB_ROOT="$(cat "$(dirname "$0")/root")"' in text
+    assert 'ln -s "$SOURCE" "$TARGET"' not in text
     assert 'sv up yasinhub' in text
     assert "yasinhub.cli start yasin-agent" not in text
