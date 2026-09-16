@@ -3,6 +3,8 @@ set -eu
 
 # Canonical Termux/runit service for the YasinHub Control Plane.
 # YasinHub owns Hub-managed service lifecycle; yasin-agent remains separate.
-YASINHUB_ROOT="${YASINHUB_ROOT:-$HOME/yasineco/YasinHub}"
+# Production default is a dedicated clean runtime root, never the mutable
+# developer checkout ~/yasineco/YasinHub.
+YASINHUB_ROOT="${YASINHUB_ROOT:-$HOME/yasineco/YasinHub-runtime}"
 cd "$YASINHUB_ROOT" || exit 1
 exec "$YASINHUB_ROOT/.venv/bin/python" -m yasinhub.startup
