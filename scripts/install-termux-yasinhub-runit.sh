@@ -25,13 +25,14 @@ fi
 # the supervised service itself. The caller's shell environment is not relied
 # upon after installation/reboot.
 mkdir -p "$TARGET"
-cat >"$TARGET/run" <<EOF
+printf '%s\n' "$HUB_ROOT" >"$TARGET/root"
+cat >"$TARGET/run" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/sh
 set -eu
 
-YASINHUB_ROOT=$(printf '%s' "$HUB_ROOT" | sed 's/[\\&]/\\&/g; s/["`$]/\\&/g')
-cd "\$YASINHUB_ROOT" || exit 1
-exec "\$YASINHUB_ROOT/.venv/bin/python" -m yasinhub.startup
+YASINHUB_ROOT="$(cat "$(dirname "$0")/root")"
+cd "$YASINHUB_ROOT" || exit 1
+exec "$YASINHUB_ROOT/.venv/bin/python" -m yasinhub.startup
 EOF
 chmod 0755 "$TARGET/run"
 
