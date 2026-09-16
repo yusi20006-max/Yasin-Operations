@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE="$ROOT/deploy/termux/runit/yasinhub"
 SERVICE_ROOT="${YASIN_RUNIT_SERVICE_ROOT:-${PREFIX:?}/var/service}"
 TARGET="$SERVICE_ROOT/yasinhub"
-HUB_ROOT="${YASINHUB_ROOT:-$HOME/yasineco/YasinHub}"
+HUB_ROOT="${YASINHUB_ROOT:-$HOME/yasineco/YasinHub-runtime}"
 
 [[ -f "$SOURCE/run" ]] || { echo "yasinhub run definition missing: $SOURCE/run" >&2; exit 1; }
 [[ -x "$HUB_ROOT/.venv/bin/python" ]] || { echo "YasinHub venv python missing: $HUB_ROOT/.venv/bin/python" >&2; exit 1; }
@@ -21,7 +21,21 @@ if [[ -e "$TARGET" || -L "$TARGET" ]]; then
     echo "Backed up existing yasinhub service to $backup"
 fi
 
-ln -s "$SOURCE" "$TARGET"
+# Generate a small service wrapper so a custom YASINHUB_ROOT is persisted in
+# the supervised service itself. The caller's shell environment is not relied
+# upon after installation/reboot.
+mkdir -p "$TARGET"
+printf '%s\n' "$HUB_ROOT" >"$TARGET/root"
+cat >"$TARGET/run" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+set -eu
+
+YASINHUB_ROOT="$(cat "$(dirname "$0")/root")"
+cd "$YASINHUB_ROOT" || exit 1
+exec "$YASINHUB_ROOT/.venv/bin/python" -m yasinhub.startup
+EOF
+chmod 0755 "$TARGET/run"
+
 sv up yasinhub
 
 echo "Installed YasinHub Runit service: $TARGET"
