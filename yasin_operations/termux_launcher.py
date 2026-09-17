@@ -90,7 +90,44 @@ def same_program(pid: int, spec: LauncherSpec) -> bool:
     return bool(identity and spec.identity and spec.identity in identity)
 
 
+def _resolve_executable(argv0: str) -> str:
+    """Resolve a bare command name while skipping our own launcher wrappers.
+
+    A portless direct launcher (e.g. `yasin`) shares its name with the real
+    executable it delegates to. When the wrapper directory precedes the real
+    binary directory on PATH, a naive spawn would re-enter the wrapper
+    forever (self-recursion). Skip wrapper scripts so the real executable
+    is invoked. Non-wrapper results and paths containing a directory are
+    returned unchanged; unknown names fall back to argv0.
+    """
+    if os.path.dirname(argv0):
+        return argv0
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        if not directory:
+            continue
+        candidate = os.path.join(directory, argv0)
+        try:
+            if not (os.path.isfile(candidate) and os.access(candidate, os.X_OK)):
+                continue
+            try:
+                with open(candidate, "rb") as handle:
+                    head = handle.read(4096)
+            except OSError:
+                continue
+            # Installed wrappers are shell scripts referencing this launcher.
+            if head.startswith(b"#!") and b"termux_launcher" in head:
+                continue
+            return candidate
+        except OSError:
+            continue
+    return argv0
+
+
 def _run(command: Sequence[str], *, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+    if command:
+        resolved = _resolve_executable(command[0])
+        if resolved != command[0]:
+            command = [resolved, *command[1:]]
     return subprocess.run(command, cwd=cwd, check=False, text=True)
 
 
