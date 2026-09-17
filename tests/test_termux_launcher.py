@@ -45,3 +45,11 @@ def test_termux_launcher_script_execution():
     registry = load_registry()
     for name in registry:
         assert name in res.stdout
+
+
+def test_hub_managed_service_rejects_arguments(capsys):
+    rc = main(["yasin-agent", "--help"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "is a managed service and does not accept startup arguments" in err
+
