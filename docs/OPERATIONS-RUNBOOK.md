@@ -249,3 +249,256 @@ Rules:
   state, service state, and failure reasons. No display-only state.
 - **Execution**: Termux / Android ARM64, non-interactive. No prompts, no
   stdin reads, no secrets in logs or reports.
+
+
+## YasinCoder 0.2.0 — Termux AI runtime runbook
+
+This section records the verified YasinCoder local/cloud provider setup and
+the exact operator commands used during v0.2.0 verification. It is intended
+to prevent repeating environment discovery from scratch.
+
+### Canonical checkout and release
+
+Canonical Termux checkout:
+
+```sh
+cd ~/YASIN-REPOS/YasinCoder
+git status --short
+git describe --tags --exact-match HEAD
+cat VERSION
+```
+
+Verified release state:
+
+- Repository: `yusi20006-max/YasinCoder`
+- Branch: `master`
+- Release: `v0.2.0`
+- Verified HEAD/tag commit: `d8ff87a1b67470c896cb4ddd6e1799518ab68339`
+- Native Termux Python: 3.14.6
+- Platform acceptance target: Android / Termux ARM64
+- Do not use an Ubuntu/proot environment as a substitute for native Termux
+  acceptance.
+
+### YasinCoder startup and basic diagnostics
+
+Use the installed `yasincoder` launcher from the canonical checkout:
+
+```sh
+cd ~/YASIN-REPOS/YasinCoder
+
+yasincoder help
+yasincoder info
+yasincoder models
+yasincoder doctor
+yasincoder project
+yasincoder brain
+```
+
+Main AI commands:
+
+```sh
+cd ~/YASIN-REPOS/YasinCoder
+
+yasincoder chat "<prompt>"
+yasincoder plan "<coding task>"
+yasincoder autonomous "<coding task>"
+yasincoder review "<request>"
+yasincoder fix "<request>"
+yasincoder refactor "<request>"
+yasincoder explain "<request>"
+yasincoder testgen report
+yasincoder testgen generate
+yasincoder testgen run
+yasincoder testgen verify
+```
+
+There is no supported `yasincoder run` command in v0.2.0; it reports
+`Unknown command.`.
+
+### Gemini provider
+
+Gemini is configured through YasinCoder's model registry. The verified setup
+uses a user-only key file rather than placing the key in the repository:
+
+```sh
+cd ~/YASIN-REPOS/YasinCoder
+
+yasincoder setup gemini
+yasincoder models
+```
+
+Verified primary Gemini model configuration:
+
+```text
+name: gemini
+type: gemini
+base_url: https://generativelanguage.googleapis.com/v1beta/openai
+model: gemini-3.8-flash
+api_key_file: ~/.config/yasin-coder/gemini.key
+timeout: 120
+temperature: 0.2
+max_tokens: 4096
+```
+
+A second configured Gemini model is:
+
+```text
+gemini:gemini-2.5-flash
+type: gemini
+api_key_env: GEMINI_API_KEY
+```
+
+Check the registry without printing the secret:
+
+```sh
+cd ~/YASIN-REPOS/YasinCoder
+yasincoder models
+```
+
+Important reliability finding from repeated live tests: Gemini responses were
+intermittent. Three consecutive provider tests produced failure, success,
+failure; observed failures surfaced as `RoutingError: No provider succeeded`
+and the successful request returned the requested test token. Therefore a
+Gemini `No provider succeeded` event must not automatically be interpreted as
+a YasinCoder code defect.
+
+### Local Qwen3-1.7B provider
+
+Verified model:
+
+```text
+~/models/qwen3-1.7b/Qwen3-1.7B-Q4_K_M.gguf
+```
+
+Canonical llama-server binary:
+
+```text
+/data/data/com.termux/files/usr/bin/llama-server
+```
+
+YasinCoder's discovered local registry entry is:
+
+```text
+llama_cpp:/data/data/com.termux/files/home/models/qwen3-1.7b/Qwen3-1.7B-Q4_K_M.gguf
+type=llama_cpp
+base_url=http://127.0.0.1:18080
+offline=True
+```
+
+Start the local server with the verified lightweight Termux settings:
+
+```sh
+cd ~/YASIN-REPOS/YasinCoder
+
+MODEL="$HOME/models/qwen3-1.7b/Qwen3-1.7B-Q4_K_M.gguf"
+
+nohup llama-server \
+  -m "$MODEL" \
+  --host 127.0.0.1 \
+  --port 18080 \
+  -c 2048 \
+  -np 1 \
+  -t 4 \
+  >"$HOME/qwen3-1.7b-server.log" 2>&1 &
+
+sleep 2
+curl -fsS http://127.0.0.1:18080/health
+```
+
+Expected health response:
+
+```text
+{"status":"ok"}
+```
+
+Direct server smoke test:
+
+```sh
+cd ~/YASIN-REPOS/YasinCoder
+
+curl -fsS http://127.0.0.1:18080/completion \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"Reply with exactly: QWEN_DIRECT_OK","temperature":0,"n_predict":8,"cache_prompt":false}'
+```
+
+The model is functional even if a very short generation can truncate or
+continue unexpectedly. The verified server log showed successful prompt and
+generation evaluation at roughly 6 tokens/second generation speed.
+
+### Verified YasinCoder -> Qwen smoke test
+
+Force the local model for one invocation without changing the persistent
+default model:
+
+```sh
+cd ~/YASIN-REPOS/YasinCoder
+
+YASIN_MODEL="llama_cpp:/data/data/com.termux/files/home/models/qwen3-1.7b/Qwen3-1.7B-Q4_K_M.gguf" \
+YASIN_LLAMA_MAX_TOKENS=128 \
+yasincoder chat "You are testing YasinCoder on a local Qwen model. Reply with exactly: YASINCODER_QWEN_OK"
+```
+
+Verified output:
+
+```text
+YASINCODER_QWEN_OK
+```
+
+This proves the complete local path:
+`yasincoder -> AIClient -> ProviderManager -> Router ->
+LlamaCppAdapter -> llama-server -> Qwen3-1.7B`.
+
+### Verified structured JSON smoke test
+
+Use this to confirm that Qwen can produce a simple valid JSON response through
+YasinCoder:
+
+```sh
+cd ~/YASIN-REPOS/YasinCoder
+
+YASIN_MODEL="llama_cpp:/data/data/com.termux/files/home/models/qwen3-1.7b/Qwen3-1.7B-Q4_K_M.gguf" \
+YASIN_LLAMA_MAX_TOKENS=512 \
+yasincoder chat 'Return ONLY valid JSON: {"steps":[{"description":"inspect ModelManager.default"}]}'
+```
+
+Verified output:
+
+```json
+{"steps":[{"description":"inspect ModelManager.default"}]}
+```
+
+### Planner test findings
+
+The following real planner invocation was attempted:
+
+```sh
+cd ~/YASIN-REPOS/YasinCoder
+
+YASIN_MODEL="llama_cpp:/data/data/com.termux/files/home/models/qwen3-1.7b/Qwen3-1.7B-Q4_K_M.gguf" \
+YASIN_LLAMA_MAX_TOKENS=512 \
+yasincoder plan "Inspect the YasinCoder repository. Add one focused pytest regression test that verifies ModelManager.default() respects the YASIN_MODEL environment variable when it names an existing configured model. Do not modify production code. Run the focused test and report the result."
+```
+
+Observed result:
+
+```text
+routing.RoutingError: No provider succeeded
+```
+
+A simpler JSON request immediately succeeded, so this result does not prove that
+the local provider is broken. The next diagnostic step is to inspect the exact
+Planner prompt and `validate_plan()` schema before changing production code.
+
+### Important local-provider behavior
+
+YasinCoder reads `YASIN_MODEL` from the environment for a per-process model
+override. A configured local `llama_cpp` model is marked `offline=True`, so
+the router isolates it rather than falling back to Gemini.
+
+The lightweight llama-server configuration above is important on this
+Termux/Android device. An earlier configuration using `-c 8192` and four
+parallel slots caused completion requests to time out. Reducing to
+`-c 2048 -np 1 -t 4` produced a successful health check and completion.
+
+Do not expose or commit `~/.config/yasin-coder/gemini.key`. Keep credentials
+outside repositories and avoid printing their contents in diagnostics.
