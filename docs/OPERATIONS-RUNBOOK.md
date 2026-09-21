@@ -502,3 +502,159 @@ parallel slots caused completion requests to time out. Reducing to
 
 Do not expose or commit `~/.config/yasin-coder/gemini.key`. Keep credentials
 outside repositories and avoid printing their contents in diagnostics.
+
+
+## API Token Manager PWA — v1.0.0 execution runbook
+
+Repository: `yusi20006-max/api-token-manager-pwa`  
+Release: `v1.0.0`  
+Final commit: `a00e8fcbe4f6345ee762173086b4d67110080cdd`
+
+This project is a static PWA. It does not have a dedicated bundler, build server, or application backend. The following commands are the verified Termux/Android operator path.
+
+### Canonical checkout
+
+`bash
+cd ~/api-token-manager-pwa
+git fetch origin
+git checkout main
+git pull --ff-only origin main
+git status --short
+`
+
+The final release state must be clean before acceptance.
+
+### Local PWA startup
+
+Use a free local HTTP port:
+
+`bash
+cd ~/api-token-manager-pwa
+python -m http.server 8090
+`
+
+Open:
+
+`text
+http://127.0.0.1:8090/
+`
+
+The Python server only serves static files. It is not an API backend.
+
+Do not reuse a port already occupied by another local application. During v1.0.0 acceptance, port `8080` was also used by OpenFeed traffic; requests such as `/api/status` and `/api/image` therefore reached the static server and returned 404. This was an environment/port collision, not an API Token Manager PWA defect. Port `8090` was used for the successful local acceptance.
+
+### Node regression
+
+`bash
+cd ~/api-token-manager-pwa
+npm test
+`
+
+Verified v1.0.0 result:
+
+`text
+60/60 tests passed
+`
+
+### Browser/PWA regression
+
+The authoritative browser suite is the GitHub Actions workflow, which runs on Ubuntu with Chromium:
+
+`bash
+npm install
+npx playwright install chromium
+npx playwright test
+`
+
+The suite covers PWA boot, delegated UI, reset/storage isolation, and Service Worker API-cache isolation. It uses test fixtures and does not require real provider credentials.
+
+#### Native Termux limitation
+
+Native Android/Termux execution of Playwright Chromium is not supported by the installed Playwright platform path. The following command failed with:
+
+`text
+Unsupported platform: android
+`
+
+`bash
+npx playwright install chromium
+npx playwright test
+`
+
+Therefore native Termux browser execution is classified as an environment limitation, not a product failure. The Browser/PWA GitHub Actions workflow passed for the final commit.
+
+### Dependency installation finding
+
+`npm ci` is not a valid installation command for this repository's current release because no `package-lock.json` is tracked.
+
+Use:
+
+`bash
+cd ~/api-token-manager-pwa
+npm install
+`
+
+Local `node_modules/` and generated `package-lock.json` were removed after testing and were not committed to v1.0.0.
+
+### GitHub Pages
+
+GitHub Pages is the hosted deployment path. Deployment status is verified through the repository's GitHub Actions Pages workflow.
+
+### Release verification
+
+`bash
+cd ~/api-token-manager-pwa
+git fetch origin --tags
+git checkout main
+git pull --ff-only origin main
+git describe --tags --exact-match HEAD
+gh release view v1.0.0 --repo yusi20006-max/api-token-manager-pwa
+`
+
+Expected tag:
+
+`text
+v1.0.0
+`
+
+### Runtime/security contracts recorded in v1.0.0
+
+- Service Worker caches static same-origin assets only; provider API request/response data is not cached.
+- Google Gemini authentication uses `x-goog-api-key` and does not place the API key in the request URL.
+- Browser-ambiguous fetch failures remain `NETWORK_ERROR` unless explicit evidence supports `CORS_BLOCKED`.
+- Smart Setup keeps discovery and health evidence separate and reports `CONFLICTING_EVIDENCE` when evidence conflicts.
+- Reset clears managed API/session state without clearing unrelated local storage.
+- Capability Matrix does not infer inference support from `/models` alone.
+- OrcaRouter runtime smoke coverage verifies `/models`, `/chat/completions`, and `/responses` using mocked HTTP fixtures.
+- No real provider credentials are required by the regression suite.
+
+### v1.0.0 implementation history
+
+The final gap/regression audit was resolved through the following merged issues and PRs:
+
+| Issue | Scope | PR | Result |
+| --- | --- | --- | --- |
+| #35 | Service Worker / API cache isolation | #45 | Merged |
+| #36 | CORS runtime contract | #46 | Merged |
+| #37 | Google header authentication | #47 | Merged |
+| #38 | Remove obsolete Phase 6 automation | #48 | Merged |
+| #49 | Smart Setup alignment | #50 | Merged |
+| #39 | Smart Setup auth evidence | #51 | Merged |
+| #40 | Reset single invocation | #52 | Merged |
+| #41 | Separate UI from storage | #53 | Merged |
+| #42 | Browser/PWA regression suite | #54 | Merged |
+| #43 | Provider/runtime documentation | #55 | Merged |
+| #44 | OrcaRouter runtime smoke | #56 | Merged |
+
+Final acceptance:
+
+`text
+Node tests: 60/60 PASS
+Browser/PWA CI: PASS
+GitHub Pages: PASS
+Local PWA on Termux: PASS
+Native Termux Playwright: BLOCKED (Android unsupported)
+Release v1.0.0: PASS
+`
+
+The project README contains the user-facing execution and troubleshooting record; YASIN-DOCS contains the system-level project record.
