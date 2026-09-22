@@ -658,3 +658,30 @@ Release v1.0.0: PASS
 `
 
 The project README contains the user-facing execution and troubleshooting record; YASIN-DOCS contains the system-level project record.
+
+## Yasin System Release
+
+Issue #216 establishes a system-level release contract for the coordinated Yasin ecosystem. A system release is a reproducible snapshot of multiple repositories; individual repository releases remain owned by their respective repositories.
+
+### v1.0.0 verified baseline
+
+The first baseline is recorded in `releases/YASIN-SYSTEM-v1.0.0.json`. It contains the exact `main` commit SHA for 14 included repositories plus synchronization, runtime, shutdown, and limitation evidence.
+
+The 2026-09-22 verification recorded 14 repositories synchronized to origin (0 ahead / 0 behind), zero tracked changes, PASS runtime verification for applicable services, and PASS graceful shutdown. Yasin-MCP is explicitly PASS WITH LIMITATIONS because live stdio was blocked by the missing MCP SDK in native Termux. YasinCoder is retired/excluded and the dated YasinHub backup checkout is excluded.
+
+### Creating a future system release
+
+From the canonical native Termux ecosystem root:
+
+```sh
+cd ~/yasineco
+
+# Synchronize every included repository with origin/main and record full SHAs.
+# Run the canonical runtime verification from Yasin-Operations.
+# Stop test-started services and verify ports/processes are released.
+
+cd ~/yasineco/Yasin-Operations
+python scripts/validate_system_release.py releases/YASIN-SYSTEM-v<version>.json
+```
+
+The manifest is the source of truth for the coordinated snapshot. A public system tag/release artifact is created only after final verification. Never promote SKIP or BLOCKED checks to PASS, and do not include retired repositories or backup checkouts without an explicit scope change.
