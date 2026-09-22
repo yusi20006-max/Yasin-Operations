@@ -50,8 +50,15 @@ def main() -> int:
         return 1
 
     for item in repositories:
-        if item.get("branch") != "main" or not SHA_RE.fullmatch(item.get("commit", "")):
-            print(f"invalid repository ref for {item.get('name')}", file=sys.stderr)
+        name = item.get("name")
+        # Explicit per-repository branch rule (Issue #218): every repository
+        # tracks `main`, except YasinCoder which tracks `master`. No other
+        # branch is valid for any repository.
+        expected_branch = "master" if name == "YasinCoder" else "main"
+        if item.get("branch") != expected_branch or not SHA_RE.fullmatch(
+            item.get("commit", "")
+        ):
+            print(f"invalid repository ref for {name}", file=sys.stderr)
             return 1
 
     verification = data["verification"]
@@ -64,8 +71,8 @@ def main() -> int:
     if verification.get("tracked_changes") != 0:
         print("release snapshot has tracked changes", file=sys.stderr)
         return 1
-    if "YasinCoder" in names or "YasinHub-backup-20260904-094936" in names:
-        print("retired/backup repository must not be included", file=sys.stderr)
+    if "YasinHub-backup-20260904-094936" in names:
+        print("backup checkout must not be included", file=sys.stderr)
         return 1
 
     print(f"PASS: {path} ({len(repositories)} repositories)")

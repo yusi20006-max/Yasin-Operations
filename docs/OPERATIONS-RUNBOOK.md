@@ -503,6 +503,20 @@ parallel slots caused completion requests to time out. Reducing to
 Do not expose or commit `~/.config/yasin-coder/gemini.key`. Keep credentials
 outside repositories and avoid printing their contents in diagnostics.
 
+### YasinCoder lifecycle boundary
+
+YasinCoder is a CLI/project workflow, not a daemon or service:
+
+- Repository: `yusi20006-max/YasinCoder`, branch `master`
+- Canonical path: `~/YASIN-REPOS/YasinCoder` (outside `~/yasineco`)
+- Install: `python -m pip install .` (dev: `python -m pip install -e .`)
+- Test: `python -m unittest discover -s tests -p 'test_*.py' -v`
+- Entry points: `yasincoder`, `yasincoder-tui` (console scripts; no ports)
+- It MUST NOT be added to the YasinHub/Runit managed-service lifecycle.
+- It MUST NOT be confused with the retired Hub service name `yasin-coder`,
+  nor with OpenCode, Claude Code, or Codex, which are not Yasin runtime
+  services.
+
 
 ## API Token Manager PWA — v1.0.0 execution runbook
 
@@ -663,6 +677,30 @@ The project README contains the user-facing execution and troubleshooting record
 
 Issue #216 establishes a system-level release contract for the coordinated Yasin ecosystem. A system release is a reproducible snapshot of multiple repositories; individual repository releases remain owned by their respective repositories.
 
+### Whole-system bootstrap (Issue #218)
+
+Two modes, never mixed:
+
+- **Mode A — current `main`/`master` bootstrap.** Synchronize every active
+  repository with its origin branch. The reusable procedure is
+  `scripts/bootstrap-system.sh` (sync existing checkouts) or
+  `scripts/bootstrap-system.sh --clone` (fresh clone, skips existing
+  directories). The script fails fast and never resets, rebases, cleans,
+  or force-pushes; dirty trees and local commits are reported, not destroyed.
+- **Mode B — exact system-release reproduction.** Check out the immutable
+  40-character commit SHAs recorded in the release manifest instead of
+  branch tips. Never rely on tags alone.
+
+Explicit branch map (15 active repositories). Every repository uses `main`
+except YasinCoder, which uses `master`:
+
+```text
+~/yasineco: Openfeed, YASIN-DOCS, Yasin-AI, Yasin-MCP, Yasin-Operations,
+  Yasin-agent, Yasin-cli, Yasin-core, YasinHub, YasinPress-Rewrite-,
+  YasinRelay, Yasinfeed, api-token-manager-pwa, YasinPress  -> main
+~/YASIN-REPOS/YasinCoder                                        -> master
+```
+
 ### v1.0.0 verified baseline
 
 The first baseline is recorded in `releases/YASIN-SYSTEM-v1.0.0.json`. It contains the exact `main` commit SHA for 14 included repositories plus synchronization, runtime, shutdown, and limitation evidence.
@@ -685,3 +723,8 @@ python scripts/validate_system_release.py releases/YASIN-SYSTEM-v<version>.json
 ```
 
 The manifest is the source of truth for the coordinated snapshot. A public system tag/release artifact is created only after final verification. Never promote SKIP or BLOCKED checks to PASS, and do not include retired repositories or backup checkouts without an explicit scope change.
+
+Future system releases after v1.0.0 include YasinCoder (branch `master`,
+exact SHA recorded at verification time) under Issue #218. The historical
+`releases/YASIN-SYSTEM-v1.0.0.json` artifact is frozen and MUST NOT be
+rewritten to add it.

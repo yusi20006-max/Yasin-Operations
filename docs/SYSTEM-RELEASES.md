@@ -71,7 +71,9 @@ System-release work must not:
 - bypass YasinHub lifecycle authority;
 - treat an environment limitation as a product defect without evidence;
 - include the YasinHub dated backup checkout;
-- resurrect retired YasinCoder startup/release scope.
+- include YasinCoder in a system release without the explicit Issue #218
+  scope (branch `master`, exact SHA, CLI/workflow lifecycle — never
+  Hub/Runit-managed, never a rewrite of the frozen v1.0.0 manifest).
 
 ## Evidence classification
 
