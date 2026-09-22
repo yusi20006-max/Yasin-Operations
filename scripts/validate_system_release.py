@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""Validate a Yasin System Release manifest deterministically."""
+"""Validate a Yasin System Release JSON manifest deterministically."""
 
 from __future__ import annotations
 
+import json
+import re
 import sys
 from pathlib import Path
-
-try:
-    import yaml
-except ImportError as exc:
-    raise SystemExit("PyYAML is required: python -m pip install pyyaml") from exc
 
 REQUIRED_KEYS = {
     "system_release",
@@ -21,23 +18,29 @@ REQUIRED_KEYS = {
     "limitations",
     "excluded",
 }
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print(f"usage: {Path(sys.argv[0]).name} <manifest.yml>", file=sys.stderr)
+        print(f"usage: {Path(sys.argv[0]).name} <manifest.json>", file=sys.stderr)
         return 2
 
     path = Path(sys.argv[1])
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"invalid manifest: {exc}", file=sys.stderr)
+        return 1
 
-    missing = REQUIRED_KEYS - set(data or {})
+    missing = REQUIRED_KEYS - set(data)
     if missing:
         print(f"missing keys: {', '.join(sorted(missing))}", file=sys.stderr)
         return 1
 
     repositories = data["repositories"]
-    if len(repositories) != data["verification"]["repository_count"]:
+    expected = data["verification"]["repository_count"]
+    if len(repositories) != expected:
         print("repository_count does not match repositories list", file=sys.stderr)
         return 1
 
@@ -47,28 +50,22 @@ def main() -> int:
         return 1
 
     for item in repositories:
-        commit = item.get("commit", "")
-        if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
-            print(f"invalid commit SHA for {item.get('name')}", file=sys.stderr)
-            return 1
-        if item.get("branch") != "main":
-            print(f"unexpected branch for {item.get('name')}", file=sys.stderr)
+        if item.get("branch") != "main" or not SHA_RE.fullmatch(item.get("commit", "")):
+            print(f"invalid repository ref for {item.get('name')}", file=sys.stderr)
             return 1
 
-    if data["verification"].get("sync") != "PASS":
+    verification = data["verification"]
+    if verification.get("sync") != "PASS":
         print("verification.sync must be PASS", file=sys.stderr)
         return 1
-
-    if data["verification"].get("ahead") != 0 or data["verification"].get("behind") != 0:
+    if verification.get("ahead") != 0 or verification.get("behind") != 0:
         print("release snapshot is not synchronized", file=sys.stderr)
         return 1
-
-    if "YasinCoder" in names:
-        print("retired YasinCoder must not be included", file=sys.stderr)
+    if verification.get("tracked_changes") != 0:
+        print("release snapshot has tracked changes", file=sys.stderr)
         return 1
-
-    if "YasinHub-backup-20260904-094936" in names:
-        print("backup checkout must not be included", file=sys.stderr)
+    if "YasinCoder" in names or "YasinHub-backup-20260904-094936" in names:
+        print("retired/backup repository must not be included", file=sys.stderr)
         return 1
 
     print(f"PASS: {path} ({len(repositories)} repositories)")
