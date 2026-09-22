@@ -56,7 +56,7 @@ cd ~/yasineco
 # 5. Write the manifest with the exact verified SHAs.
 # 6. Validate the manifest.
 cd ~/yasineco/Yasin-Operations
-python scripts/validate_system_release.py releases/YASIN-SYSTEM-v<version>.yml
+python scripts/validate_system_release.py releases/YASIN-SYSTEM-v<version>.json
 ```
 
 The manifest is the source of truth for the coordinated snapshot. Individual
