@@ -728,3 +728,361 @@ Future system releases after v1.0.0 include YasinCoder (branch `master`,
 exact SHA recorded at verification time) under Issue #218. The historical
 `releases/YASIN-SYSTEM-v1.0.0.json` artifact is frozen and MUST NOT be
 rewritten to add it.
+
+
+## Android APK build on Termux/ARM64 — reusable Yasin Chess procedure
+
+This section records the verified Android APK build procedure established on
+Yasin Chess v0.3.0 on native Termux/Android ARM64. Reuse this procedure for
+future Android applications when the host is ARM64 and the official Android
+Build Tools binaries are x86_64.
+
+### Scope and verified environment
+
+- Host: Android / Termux ARM64 (aarch64), native Termux; do not substitute
+  Ubuntu/proot for Android acceptance.
+- Java: OpenJDK 21.
+- Gradle wrapper: use the project's wrapper.
+- Android SDK root:
+  `~/android-sdk`
+- SDK platform used by Yasin Chess:
+  `platforms/android-36`
+- Build Tools:
+  `build-tools/35.0.0`
+- Box64:
+  `box64-glibc 0.4.4`, executed through `glibc-runner`.
+- Project:
+  `~/YASIN-REPOS/yasin-chess`
+- Capacitor Android:
+  ```capacitor/core`, ```capacitor/android`, and ```capacitor/cli` 8.5.2.
+- Android project configuration:
+  `minSdkVersion=24`, `compileSdkVersion=36`,
+  `targetSdkVersion=36`.
+
+### Important architecture finding
+
+The official Android Build Tools package used here contains x86-64 native
+executables. On aarch64 Termux, direct execution fails with `Exec format
+error`. Box64 provides the x86-64 compatibility layer.
+
+The verified Box64 executable is:
+
+```text
+/data/data/com.termux/files/usr/glibc/bin/box64
+```
+
+It must be invoked through the verified Termux glibc runner:
+
+```sh
+glibc-runner --shell "$BOX64" --version
+```
+
+Expected result includes:
+
+```text
+Box64 arm64 v0.4.4
+```
+
+Do not assume `command -v box64` succeeds. On this environment the binary
+was present under the glibc prefix and direct execution was not the valid path.
+
+### SDK package acquisition
+
+Keep downloaded SDK archives separate from the installed SDK tree. For this
+verified procedure the archives were downloaded externally with Android
+Download Manager, copied into:
+
+```text
+~/android-sdk/downloads/
+```
+
+Verified archive:
+
+```text
+commandlinetools-linux-15859902_latest.zip
+```
+
+Its SHA256 was verified before extraction:
+
+```text
+4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
+```
+
+The Build Tools archive used was:
+
+```text
+build-tools_r35_linux.zip
+```
+
+Verified SHA256:
+
+```text
+bd3a4966912eb8b30ed0d00b0cda6b6543b949d5ffe00bea54c04c81e1561d88
+```
+
+The archive extracted to a directory named `android-15`, but its
+`source.properties` reported `Pkg.Revision=35.0.0`. The extracted
+directory was therefore installed as:
+
+```text
+~/android-sdk/build-tools/35.0.0
+```
+
+The archive is retained in `~/android-sdk/downloads/` for reproducibility.
+
+The Android platform archive used was:
+
+```text
+platform-36_r02.zip
+```
+
+Its installed target is:
+
+```text
+~/android-sdk/platforms/android-36
+```
+
+Do not rely on guessed Google repository filenames. If automatic
+`sdkmanager` installation is unreliable on Termux, acquire the exact
+official archives separately, verify their checksums, then install them into
+the SDK tree.
+
+### Verify the Build Tools before building
+
+Confirm the package metadata and important executables:
+
+```sh
+cd ~/YASIN-REPOS/yasin-chess
+
+cat "$HOME/android-sdk/build-tools/35.0.0/source.properties"
+
+ls -lh "$HOME/android-sdk/build-tools/35.0.0/"{aapt,aapt2,aidl,apksigner,d8,zipalign}
+```
+
+The metadata must identify Build Tools 35.0.0.
+
+Test AAPT2 through Box64:
+
+```sh
+cd ~/YASIN-REPOS/yasin-chess
+
+BOX64="$PREFIX/glibc/bin/box64"
+AAPT2="$HOME/android-sdk/build-tools/35.0.0/aapt2"
+
+glibc-runner --shell "$BOX64" "$AAPT2" version
+```
+
+A successful response identifies Android Asset Packaging Tool 2.x. Direct
+execution of the same x86-64 `aapt2` binary is expected to fail on aarch64.
+
+### Capacitor/Gradle preparation
+
+Use the project's existing Gradle wrapper and Android project. Do not replace
+the wrapper with a system Gradle installation.
+
+For the Yasin Chess build, the local TypeScript 7 package was incompatible
+with the Termux/Android ARM64 environment because the package attempted to
+load ```typescript/typescript-android-arm64`. A clean dependency install plus
+a local no-save TypeScript 5.9.3 override produced the verified web build.
+
+The Android build therefore used the project's normal dependencies with:
+
+```sh
+cd ~/YASIN-REPOS/yasin-chess
+
+npm install --no-save --force typescript@5.9.3
+npm run build
+```
+
+Keep generated `node_modules/`, `dist/`, and other local build artifacts
+out of Git unless the repository explicitly tracks them.
+
+### AAPT2 override for Gradle
+
+Create a small wrapper so Gradle can invoke the x86-64 AAPT2 through Box64:
+
+```sh
+cd ~/YASIN-REPOS/yasin-chess
+
+mkdir -p "$HOME/android-sdk/aapt2-box64"
+
+cat > "$HOME/android-sdk/aapt2-box64/aapt2" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+exec glibc-runner --shell "$HOME/android-sdk/../usr/glibc/bin/box64" "$HOME/android-sdk/build-tools/35.0.0/aapt2" "$@"
+EOF
+
+chmod +x "$HOME/android-sdk/aapt2-box64/aapt2"
+```
+
+The Gradle property that selects this wrapper is:
+
+```text
+-Pandroid.aapt2FromMavenOverride=$HOME/android-sdk/aapt2-box64/aapt2
+```
+
+This is the key reusable technique for Android builds whose AAPT2 binary is
+x86-64 while the host is ARM64.
+
+### Verified Yasin Chess APK build
+
+The verified native Termux build command was:
+
+```sh
+cd ~/YASIN-REPOS/yasin-chess
+
+AAPT2_WRAPPER="$HOME/android-sdk/aapt2-box64/aapt2"
+
+./gradlew assembleDebug --no-daemon \
+  -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER"
+```
+
+Verified result:
+
+```text
+BUILD SUCCESSFUL
+243 actionable tasks: 173 executed, 70 up-to-date
+```
+
+APK output:
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Verified APK size:
+
+```text
+4237990 bytes
+```
+
+Verified SHA256:
+
+```text
+3abfd4dc4a9e0dd712e6b1cc5153a2228a5f9d7ee8e6b5492a9275d6f006107a
+```
+
+Always record the final APK SHA256 after a successful build.
+
+### APK installation on the same Android device
+
+Native Termux `adb` initially failed because the installed
+`android-tools 37.0.0-2` was paired with older `libc++ 29` and
+`ndk-sysroot 29-2`. The targeted dependency upgrade fixed ADB:
+
+```sh
+apt-get install -y libc++ ndk-sysroot
+adb --version
+adb devices -l
+```
+
+Verified versions:
+
+```text
+libc++ 30
+ndk-sysroot 30
+android-tools 37.0.0-2
+```
+
+Wireless ADB pairing from Termux to the same Android device was not successful
+in this environment. Repeated `adb pair` attempts returned:
+
+```text
+error: protocol fault (couldn't read status message): Success
+```
+
+Direct `adb connect` to the Wireless Debugging connection port also failed.
+Do not treat that failure as an APK-build failure.
+
+For installation on the same device, the verified fallback is to invoke the
+Android package installer through Termux:
+
+```sh
+cd ~/YASIN-REPOS/yasin-chess
+
+APK="$PWD/android/app/build/outputs/apk/debug/app-debug.apk"
+termux-open "$APK"
+```
+
+The Yasin Chess v0.3.0 debug APK was successfully installed on the physical
+Android device using this path.
+
+### Android runtime acceptance
+
+APK installation success is not runtime acceptance. After installation,
+open the application on the physical device and test at minimum:
+
+1. Application cold start without crash.
+2. Board renders with all 64 cells equal and square.
+3. Pieces render consistently inside their cells.
+4. A legal player move executes.
+5. Offline opponent response executes.
+6. Online opponent response executes when the online path is configured.
+7. UI controls operate.
+8. Game state survives application close and cold reopen.
+9. Offline behavior remains usable without network access.
+10. No unexpected state reset occurs after reload/restart.
+
+Record runtime defects separately from build/install defects. In the first
+Yasin Chess v0.3.0 physical-device test, installation succeeded but runtime
+acceptance found opponent-response failures in both offline and online modes,
+non-uniform board-cell sizing, non-standard piece artwork, and loss of game
+state after application restart.
+
+### Reuse checklist for future Android projects
+
+```text
+[ ] Confirm aarch64 Android/Termux and Java 21
+[ ] Set ANDROID_SDK_ROOT / SDK path
+[ ] Keep downloaded SDK archives under ~/android-sdk/downloads/
+[ ] Verify archive SHA256 before extraction
+[ ] Install platform and Build Tools into the SDK tree
+[ ] Confirm Build Tools source.properties
+[ ] Confirm x86-64 AAPT2 architecture when applicable
+[ ] Verify Box64 through glibc-runner
+[ ] Create/use the AAPT2 Box64 wrapper
+[ ] Run the project's web build
+[ ] Run Gradle through the project wrapper
+[ ] Pass android.aapt2FromMavenOverride to Gradle
+[ ] Record APK path, size, and SHA256
+[ ] Upgrade only required Termux dependencies when ADB has ABI mismatch
+[ ] Prefer termux-open APK installation when same-device ADB is unavailable
+[ ] Perform physical-device runtime acceptance separately
+[ ] Do not mark Android release acceptance PASS from build/install alone
+```
+
+### Canonical build pattern
+
+The reusable pattern is:
+
+```text
+Android source
+    |
+    v
+npm dependencies / web build
+    |
+    v
+Gradle wrapper
+    |
+    +--> x86-64 AAPT2
+    |       |
+    |       v
+    |    glibc-runner -> Box64 -> AAPT2
+    |
+    v
+Debug/Release APK
+    |
+    +--> SHA256 verification
+    |
+    +--> physical Android installation
+    |
+    \`--> runtime acceptance
+```
+
+For future projects, preserve this separation:
+
+- **Build success** = Gradle produced the APK.
+- **Artifact verification** = APK path, size, and SHA256 recorded.
+- **Installation success** = Android package installer accepted the APK.
+- **Runtime acceptance** = application behavior verified on the physical device.
+- **Release acceptance** = runtime acceptance plus project-specific security,
+  signing, regression, and release checks.
