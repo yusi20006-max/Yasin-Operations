@@ -882,7 +882,7 @@ the wrapper with a system Gradle installation.
 
 For the Yasin Chess build, the local TypeScript 7 package was incompatible
 with the Termux/Android ARM64 environment because the package attempted to
-load ```typescript/typescript-android-arm64`. A clean dependency install plus
+load `@typescript/typescript-android-arm64`. A clean dependency install plus
 a local no-save TypeScript 5.9.3 override produced the verified web build.
 
 The Android build therefore used the project's normal dependencies with:
@@ -1049,6 +1049,147 @@ state after application restart.
 [ ] Perform physical-device runtime acceptance separately
 [ ] Do not mark Android release acceptance PASS from build/install alone
 ```
+
+
+### Future-project adaptation rules
+
+The procedure above is the canonical **method**, not a requirement that every future application use the same versions. For a new Android project:
+
+1. Inspect the project's required Android Gradle Plugin, Gradle wrapper, compile SDK, target SDK, min SDK, Java version, and Capacitor/Cordova/native stack before changing anything.
+2. Reuse the existing SDK root and installed platform/build-tools when they satisfy those requirements. Do not redownload a package that is already verified and compatible.
+3. If the new project requires another SDK platform or Build Tools version, download that exact official archive, verify its SHA256, retain the archive under `~/android-sdk/downloads/`, and install it beside the existing versions. Never replace a working version blindly.
+4. Check the architecture of every native Android tool that Gradle must execute. If an x86-64 tool is required on aarch64, prefer the verified `glibc-runner -> Box64` path rather than copying or modifying binaries.
+5. Re-test AAPT2 directly through the wrapper before invoking a full Gradle build. If AAPT2 is native ARM64 in a future toolchain, the Box64 override is unnecessary.
+6. Prefer the project's Gradle wrapper. Do not globally upgrade Gradle or AGP merely to make a build pass.
+7. Keep project-specific workarounds local and documented. A TypeScript compatibility override used by one project must not be copied to another project without reproducing the compatibility failure.
+8. Build first with `assembleDebug`. Only after debug build and physical runtime acceptance are green should release APK/AAB signing and release packaging be attempted.
+
+### Reusable verification commands
+
+The following checks are intentionally project-neutral except for the checkout path:
+
+```sh
+cd <ANDROID_PROJECT>
+
+echo "=== HOST ==="
+uname -m
+java -version
+node --version
+npm --version
+
+echo "=== SDK ==="
+echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$HOME/android-sdk}"
+ls -ld "$HOME/android-sdk/platforms" "$HOME/android-sdk/build-tools"
+
+echo "=== BOX64 ==="
+BOX64="$PREFIX/glibc/bin/box64"
+glibc-runner --shell "$BOX64" --version
+
+echo "=== BUILD TOOLS ==="
+cat "$HOME/android-sdk/build-tools/<BUILD_TOOLS_VERSION>/source.properties"
+
+echo "=== AAPT2 ==="
+AAPT2="$HOME/android-sdk/build-tools/<BUILD_TOOLS_VERSION>/aapt2"
+glibc-runner --shell "$BOX64" "$AAPT2" version
+
+echo "=== PROJECT ==="
+git status --short
+git rev-parse --show-toplevel
+```
+
+Replace placeholders before execution. Do not paste the placeholder commands unchanged into an acceptance run.
+
+### Artifact acceptance commands
+
+After a successful build, record the exact artifact rather than relying on a directory listing:
+
+```sh
+cd <ANDROID_PROJECT>
+
+APK="$PWD/<APK_PATH>"
+
+test -f "$APK"
+ls -lh "$APK"
+sha256sum "$APK"
+```
+
+The SHA256 belongs in the build report. If the APK is rebuilt, the new hash must be recorded; never carry forward a hash from an older build.
+
+### Release signing boundary
+
+Debug APK generation and release signing are separate stages.
+
+- Debug APK: suitable for local installation and runtime smoke testing.
+- Signed release APK: requires the project's release signing architecture and secrets; keystore material must never be committed to Git.
+- AAB: build only after the release configuration is verified.
+- Production release: requires clean repository state, CI/release workflow verification, signing verification, artifact hashes, and physical-device acceptance appropriate to the release scope.
+
+For Yasin Chess, release signing is documented separately in `docs/ANDROID-SIGNING.md`. The Termux build procedure must not embed signing passwords, aliases, keystore files, or base64 secrets.
+
+### Troubleshooting decision tree
+
+```text
+Gradle fails before AAPT2
+    -> inspect Java / Gradle wrapper / AGP / dependency compatibility
+
+AAPT2: Exec format error
+    -> verify host is aarch64
+    -> verify AAPT2 is x86-64
+    -> verify Box64 through glibc-runner
+    -> use android.aapt2FromMavenOverride
+
+Box64 itself does not start
+    -> do not replace AAPT2
+    -> verify glibc-runner and the actual Box64 path
+    -> stop and diagnose the runtime first
+
+ADB cannot start with a libc++ symbol error
+    -> inspect android-tools dependency versions
+    -> simulate the targeted libc++/ndk-sysroot upgrade
+    -> upgrade only the required dependencies
+    -> re-run adb --version
+
+ADB Wireless Pairing fails
+    -> record the exact adb error
+    -> do not classify APK build as failed
+    -> try direct connection only with Android's displayed connection port
+    -> if same-device wireless ADB remains unavailable, use termux-open
+
+APK installs but app fails at runtime
+    -> classify as runtime acceptance failure, not build failure
+    -> reproduce on physical device
+    -> capture logs/evidence
+    -> create an issue against the application layer
+
+APK builds and installs but state resets after restart
+    -> classify as persistence/runtime regression
+    -> inspect storage hydration and lifecycle handling
+
+UI is distorted on device but web build passes
+    -> classify as Android/runtime UI regression
+    -> inspect viewport, safe-area, CSS sizing, and native WebView behavior
+```
+
+### Evidence and reporting standard
+
+Every Android build report should contain:
+
+- project/repository and commit SHA;
+- Android/Termux architecture;
+- Java, Node, Gradle/AGP and relevant SDK versions;
+- exact Build Tools version;
+- whether AAPT2 was native or executed through Box64;
+- build command;
+- Gradle result and duration when useful;
+- APK/AAB path;
+- artifact size;
+- SHA256;
+- installation method and result;
+- physical-device runtime result;
+- known failures/limitations;
+- whether the result is **BUILD PASS**, **INSTALL PASS**, **RUNTIME PASS**, or **RELEASE PASS**.
+
+Never collapse these states into a single "APK works" statement.
 
 ### Canonical build pattern
 
