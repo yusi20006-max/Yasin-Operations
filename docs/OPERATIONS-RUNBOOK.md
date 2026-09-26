@@ -754,7 +754,7 @@ Build Tools binaries are x86_64.
 - Project:
   `~/YASIN-REPOS/yasin-chess`
 - Capacitor Android:
-  ```capacitor/core`, ```capacitor/android`, and ```capacitor/cli` 8.5.2.
+  `@capacitor/core`, `@capacitor/android`, and `@capacitor/cli` 8.5.2.
 - Android project configuration:
   `minSdkVersion=24`, `compileSdkVersion=36`,
   `targetSdkVersion=36`.
